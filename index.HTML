@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestionale Pallamano Multi-Squadra</title>
+    <!-- Librerie per la generazione dei PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --secondary: #34495e;
+            --accent: #3498db;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --warning: #f1c40f;
+            --bg: #f8f9fa;
+        }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--bg); color: #333; }
+        header { background: var(--primary); color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        header h2 { margin: 0; }
+        .squadra-selector-header { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 6px; }
+        .squadra-selector-header select { padding: 6px 10px; border-radius: 4px; border: none; font-weight: bold; background: white; color: #333; }
+        nav button { background: var(--secondary); color: white; border: none; padding: 10px 15px; margin-left: 5px; cursor: pointer; border-radius: 4px; }
+        nav button.active, nav button:hover { background: var(--accent); }
+        .container { max-width: 1000px; margin: 20px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; }
+        input[type="text"], input[type="date"], select, input[type="month"], input[type="file"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button.btn { background: var(--accent); color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        button.btn-success { background: var(--success); }
+        button.btn-danger { background: var(--danger); }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { background: #eee; }
+        .tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
+        .highlight { background: #e8f4f8; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 5px solid var(--accent); }
+        .action-bar { display: flex; gap: 10px; margin-top: 15px; }
+        .squadra-box { background: #eef7fc; border: 1px solid #bce1f3; padding: 10px 15px; border-radius: 6px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div>
+            <h2>Gestionale Squadre</h2>
+        </div>
+        <div class="squadra-selector-header">
+            <label style="margin:0; color:white;">Squadra Attiva:</label>
+            <select class="select-squadra-global" onchange="cambiaSquadraGlobal(this.value)"></select>
+            <button class="btn btn-danger" onclick="eliminaSquadraCorrente()" title="Elimina Squadra Attiva" style="padding: 5px 10px;">🗑️</button>
+        </div>
+        <nav>
+            <button class="active" onclick="cambiaTab('tab-squadre', this)">0. Gestione Squadre</button>
+            <button onclick="cambiaTab('tab-giocatori', this)">1. Giocatori</button>
+            <button onclick="cambiaTab('tab-evento', this)">2. Appello & Eventi</button>
+            <button onclick="cambiaTab('tab-dati', this)">3. Dati & PDF</button>
+        </nav>
+    </header>
+
+    <div class="container">
+
+        <!-- SEZIONE 0: CREAZIONE E GESTIONE SQUADRE -->
+        <div id="tab-squadre" class="tab-content active">
+            <h3>Crea o Importa una Nuova Squadra</h3>
+            <div class="card" style="margin-bottom: 20px;">
+                <div class="form-group">
+                    <label>Nome Nuova Squadra *</label>
+                    <input type="text" id="nuova-squadra-nome" placeholder="Es. Under 17 Maschile, Serie B...">
+                </div>
+                <div class="form-group">
+                    <label>Opzionale: Carica File JSON Dati Squadra</label>
+                    <input type="file" id="nuova-squadra-json" accept=".json">
+                    <small style="color: #666;">Se selezioni un file JSON di backup, la nuova squadra verrà creata popolando direttamente i suoi giocatori ed eventi.</small>
+                </div>
+                <button class="btn btn-success" onclick="creaSquadra()">➕ Crea / Carica Squadra</button>
+            </div>
+        </div>
+        
+        <!-- SEZIONE 1: GIOCATORI -->
+        <div id="tab-giocatori" class="tab-content">
+            <div class="squadra-box">
+                <label>Selezione Squadra per la Rosa:</label>
+                <select class="select-squadra-global" onchange="cambiaSquadraGlobal(this.value)"></select>
+            </div>
+            <h3 id="titolo-rosa">Gestione Rosa</h3>
+            <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
+                <div style="flex: 1;"><label>Nome</label><input type="text" id="g-nome"></div>
+                <div style="flex: 1;"><label>Cognome</label><input type="text" id="g-cognome"></div>
+                <div style="flex: 1;"><label>Ruolo</label><input type="text" id="g-ruolo"></div>
+                <button class="btn" onclick="aggiungiGiocatore()">Aggiungi Giocatore</button>
+            </div>
+            <table>
+                <thead><tr><th>Giocatore</th><th>Ruolo</th><th>Azione</th></tr></thead>
+                <tbody id="lista-giocatori"></tbody>
+            </table>
+        </div>
+
+        <!-- SEZIONE 2: EVENTO E APPELLO -->
+        <div id="tab-evento" class="tab-content">
+            <h3>Gestione Appello & Eventi</h3>
+            
+            <div class="squadra-box">
+                <label>Seleziona Squadra per Appello:</label>
+                <select class="select-squadra-global" id="appello-squadra-select" onchange="cambiaSquadraGlobal(this.value)"></select>
+            </div>
+
+            <div class="highlight">
+                <label>Carica un evento passato della squadra selezionata:</label>
+                <select id="selettore-evento" onchange="caricaEvento()">
+                    <option value="">-- Crea Nuovo Evento --</option>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 15px; margin-bottom: 15px; align-items: flex-start;">
+                <div style="flex: 1;">
+                    <label>Data</label>
+                    <input type="date" id="e-data" onchange="controllaDataEsistente()">
+                    <small id="avviso-data" style="display:block; margin-top:6px; font-weight:bold;"></small>
+                </div>
+                <div style="flex: 1;">
+                    <label>Tipo Evento</label>
+                    <select id="e-tipo" onchange="toggleNomePartita()">
+                        <option value="Allenamento">Allenamento</option>
+                        <option value="Partita">Partita</option>
+                    </select>
+                </div>
+                <div style="flex: 2; display: none;" id="div-nome-partita">
+                    <label>Nome Partita (es. vs Squadra X)</label>
+                    <input type="text" id="e-nome-partita" placeholder="Inserisci avversario o nome partita">
+                </div>
+            </div>
+
+            <button class="btn" onclick="iniziaAppello()">Genera / Mostra Appello</button>
+            
+            <div id="area-appello" style="display:none; margin-top: 20px;">
+                <hr>
+                <h4 id="titolo-appello">Registro Presenze</h4>
+                <table id="tabella-appello">
+                    <thead><tr><th>Giocatore</th><th>Presente</th><th>Non Avv.</th><th>Motivazione / Note</th></tr></thead>
+                    <tbody id="lista-appello"></tbody>
+                </table>
+                <div class="action-bar">
+                    <button class="btn btn-success" onclick="salvaEvento()">Salva Dati Appello</button>
+                    <button class="btn" onclick="generaPDFEvento(document.getElementById('pdf-squadra-select').value, document.getElementById('e-data').value)">📄 Scarica PDF Questo Evento</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEZIONE 3: DATI, BACKUP E PDF -->
+        <div id="tab-dati" class="tab-content">
+            <h3>Salvataggio Backup & Generazione Report PDF</h3>
+            <div class="tools-grid">
+                
+                <div class="card">
+                    <h4>Backup e Ripristino</h4>
+                    <div class="form-group">
+                        <label>Seleziona Squadra per Backup / Export:</label>
+                        <select id="backup-squadra-select" onchange="cambiaSquadraGlobal(this.value)"></select>
+                    </div>
+                    <button class="btn btn-success" onclick="esportaDatiSceltaCartella()">⬇️ Salva Backup Squadra In JSON...</button>
+                    <hr style="margin: 15px 0;">
+                    <div class="form-group">
+                        <label>Importa / Sovrascrivi dati su squadra selezionata:</label>
+                        <input type="file" id="file-import" accept=".json" style="margin-bottom: 10px;">
+                        <button class="btn" onclick="importaDati()">⬆️ Carica Dati da JSON</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h4>Generazione PDF</h4>
+                    <div class="form-group">
+                        <label>Squadra per Report PDF:</label>
+                        <select id="pdf-squadra-select" onchange="aggiornaOpzioniPdfSquadra(this.value)"></select>
+                    </div>
+                    <hr>
+                    <div class="form-group">
+                        <label>Report Singolo Evento</label>
+                        <select id="pdf-evento-select"></select>
+                        <button class="btn" onclick="generaPDFEventoForm()" style="margin-top: 5px;">Scarica PDF Evento</button>
+                    </div>
+                    <hr>
+                    <div class="form-group">
+                        <label>Report Mese Specifico</label>
+                        <input type="month" id="pdf-mese">
+                        <button class="btn" onclick="generaPDFMeseForm()" style="margin-top: 5px;">Scarica PDF Mese</button>
+                    </div>
+                    <hr>
+                    <div class="form-group">
+                        <label>Report Singolo Giocatore</label>
+                        <select id="pdf-giocatore-select"></select>
+                        <button class="btn" onclick="generaPDFGiocatoreForm()" style="margin-top: 5px;">Scarica PDF Giocatore</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Struttura dati globale
+        let appData = {
+            squadraAttivaId: '',
+            squadre: {} // Struttura: { 'id1': { nome: 'Under 15', giocatori: [], eventi: [] } }
+        };
+
+        function getSquadra(id) {
+            const sqId = id || appData.squadraAttivaId;
+            if (!sqId || !appData.squadre[sqId]) {
+                return { giocatori: [], eventi: [], nome: '' };
+            }
+            return appData.squadre[sqId];
+        }
+
+        window.onload = () => {
+            const saved = localStorage.getItem('pallamano_multisquadra_db');
+            if (saved) {
+                try {
+                    appData = JSON.parse(saved);
+                } catch(e) { console.error(e); }
+            }
+
+            // Migrazione da vecchia versione a versione multi-squadra
+            const oldSaved = localStorage.getItem('pallamano_db');
+            if (oldSaved && Object.keys(appData.squadre).length === 0) {
+                try {
+                    const parsedOld = JSON.parse(oldSaved);
+                    const defaultId = 'squadra_default_' + Date.now();
+                    appData.squadre[defaultId] = {
+                        nome: 'Prima Squadra',
+                        giocatori: parsedOld.giocatori || [],
+                        eventi: parsedOld.eventi || parsedOld.allenamenti || []
+                    };
+                    appData.squadraAttivaId = defaultId;
+                    salvaLocale();
+                } catch(e) { console.error(e); }
+            }
+
+            // Se non esistono squadre, crea una squadra predefinita
+            if (Object.keys(appData.squadre).length === 0) {
+                const defaultId = 'squadra_' + Date.now();
+                appData.squadre[defaultId] = { nome: 'Squadra Predefinita', giocatori: [], eventi: [] };
+                appData.squadraAttivaId = defaultId;
+                salvaLocale();
+            }
+
+            document.getElementById('e-data').valueAsDate = new Date();
+            aggiornaTuttiSelettoriSquadre();
+            aggiornaUI();
+            controllaDataEsistente();
+        };
+
+        function salvaLocale() {
+            localStorage.setItem('pallamano_multisquadra_db', JSON.stringify(appData));
+            aggiornaUI();
+        }
+
+        function aggiornaTuttiSelettoriSquadre() {
+            const selettori = document.querySelectorAll('.select-squadra-global, #backup-squadra-select, #pdf-squadra-select');
+            selettori.forEach(sel => {
+                const valCorrente = sel.value || appData.squadraAttivaId;
+                sel.innerHTML = '';
+                Object.keys(appData.squadre).forEach(id => {
+                    const sq = appData.squadre[id];
+                    const opt = document.createElement('option');
+                    opt.value = id;
+                    opt.textContent = sq.nome;
+                    sel.appendChild(opt);
+                });
+                sel.value = appData.squadre[valCorrente] ? valCorrente : appData.squadraAttivaId;
+            });
+        }
+
+        function cambiaSquadraGlobal(nuovoId) {
+            if (!nuovoId || !appData.squadre[nuovoId]) return;
+            appData.squadraAttivaId = nuovoId;
+            
+            // Aggiorna tutti i dropdown al valore selezionato
+            document.querySelectorAll('.select-squadra-global, #backup-squadra-select, #pdf-squadra-select').forEach(sel => {
+                sel.value = nuovoId;
+            });
+
+            document.getElementById('area-appello').style.display = 'none';
+            document.getElementById('selettore-evento').value = '';
+            
+            salvaLocale();
+            controllaDataEsistente();
+        }
+
+        function creaSquadra() {
+            const nomeSquadra = document.getElementById('nuova-squadra-nome').value.trim();
+            if (!nomeSquadra) return alert("Inserisci un nome per la nuova squadra!");
+
+            const fileInput = document.getElementById('nuova-squadra-json');
+            const file = fileInput.files[0];
+            const idNuovaSquadra = 'sq_' + Date.now();
+
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        let importedData = JSON.parse(e.target.result);
+                        let giocatori = importedData.giocatori || [];
+                        let eventi = importedData.eventi || importedData.allenamenti || [];
+
+                        appData.squadre[idNuovaSquadra] = {
+                            nome: nomeSquadra,
+                            giocatori: giocatori,
+                            eventi: eventi
+                        };
+                        appData.squadraAttivaId = idNuovaSquadra;
+
+                        document.getElementById('nuova-squadra-nome').value = '';
+                        fileInput.value = '';
+
+                        aggiornaTuttiSelettoriSquadre();
+                        salvaLocale();
+                        alert(`Squadra "${nomeSquadra}" creata con successo e popolata dal file JSON!`);
+                    } catch(err) {
+                        alert("Errore durante la lettura del file JSON!");
+                    }
+                };
+                reader.readAsText(file);
+            } else {
+                appData.squadre[idNuovaSquadra] = {
+                    nome: nomeSquadra,
+                    giocatori: [],
+                    eventi: []
+                };
+                appData.squadraAttivaId = idNuovaSquadra;
+
+                document.getElementById('nuova-squadra-nome').value = '';
+                aggiornaTuttiSelettoriSquadre();
+                salvaLocale();
+                alert(`Squadra "${nomeSquadra}" creata con successo!`);
+            }
+        }
+
+        function eliminaSquadraCorrente() {
+            const sqAttiva = getSquadra();
+            if (Object.keys(appData.squadre).length <= 1) {
+                return alert("Impossibile eliminare l'unica squadra rimasta!");
+            }
+            if (confirm(`Sei sicuro di voler eliminare la squadra "${sqAttiva.nome}" e tutti i suoi dati?`)) {
+                delete appData.squadre[appData.squadraAttivaId];
+                appData.squadraAttivaId = Object.keys(appData.squadre)[0];
+                aggiornaTuttiSelettoriSquadre();
+                salvaLocale();
+            }
+        }
+
+        function cambiaTab(tabId, btn) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            btn.classList.add('active');
+        }
+
+        function toggleNomePartita() {
+            const tipo = document.getElementById('e-tipo').value;
+            document.getElementById('div-nome-partita').style.display = tipo === 'Partita' ? 'block' : 'none';
+        }
+
+        function controllaDataEsistente() {
+            const data = document.getElementById('e-data').value;
+            const avviso = document.getElementById('avviso-data');
+            if(!data) {
+                avviso.innerHTML = '';
+                return;
+            }
+
+            const db = getSquadra();
+            const eventoEsistente = db.eventi.find(e => e.data === data);
+            if(eventoEsistente) {
+                const label = eventoEsistente.tipo === 'Partita' ? `Partita (${eventoEsistente.nomePartita || 'Senza nome'})` : 'Allenamento';
+                avviso.style.color = 'var(--danger)';
+                avviso.innerHTML = `⚠️ Esiste già un evento per [${db.nome}]: <strong>${label}</strong>. Cliccando "Genera Appello" lo modificherai.`;
+                
+                document.getElementById('e-tipo').value = eventoEsistente.tipo || 'Allenamento';
+                document.getElementById('e-nome-partita').value = eventoEsistente.nomePartita || '';
+                toggleNomePartita();
+            } else {
+                avviso.style.color = 'var(--success)';
+                avviso.innerHTML = `✅ Data libera per [${db.nome}] (Nuovo Evento).`;
+            }
+        }
+
+        function aggiungiGiocatore() {
+            const nome = document.getElementById('g-nome').value.trim();
+            const cognome = document.getElementById('g-cognome').value.trim();
+            const ruolo = document.getElementById('g-ruolo').value.trim() || 'ND';
+            
+            if(nome && cognome) {
+                const db = getSquadra();
+                const id = Date.now().toString();
+                db.giocatori.push({ id, nome, cognome, ruolo });
+                document.getElementById('g-nome').value = '';
+                document.getElementById('g-cognome').value = '';
+                document.getElementById('g-ruolo').value = '';
+                salvaLocale();
+            } else {
+                alert("Inserisci almeno Nome e Cognome.");
+            }
+        }
+
+        function eliminaGiocatore(id) {
+            if(confirm("Sei sicuro di voler eliminare questo giocatore?")) {
+                const db = getSquadra();
+                db.giocatori = db.giocatori.filter(g => g.id !== id);
+                salvaLocale();
+            }
+        }
+
+        function caricaEvento() {
+            const db = getSquadra();
+            const dataSelezionata = document.getElementById('selettore-evento').value;
+            if(!dataSelezionata) {
+                document.getElementById('e-data').valueAsDate = new Date();
+                document.getElementById('e-tipo').value = 'Allenamento';
+                document.getElementById('e-nome-partita').value = '';
+                toggleNomePartita();
+                controllaDataEsistente();
+                document.getElementById('area-appello').style.display = 'none';
+                return;
+            }
+
+            const evento = db.eventi.find(e => e.data === dataSelezionata);
+            if(evento) {
+                document.getElementById('e-data').value = evento.data;
+                document.getElementById('e-tipo').value = evento.tipo || 'Allenamento';
+                document.getElementById('e-nome-partita').value = evento.nomePartita || '';
+                toggleNomePartita();
+                controllaDataEsistente();
+                iniziaAppello();
+            }
+        }
+
+        function iniziaAppello() {
+            const db = getSquadra();
+            if(db.giocatori.length === 0) return alert(`Aggiungi prima dei giocatori per la squadra "${db.nome}"!`);
+            const data = document.getElementById('e-data').value;
+            if(!data) return alert("Seleziona una data per l'evento!");
+
+            const tipo = document.getElementById('e-tipo').value;
+            const nomePartita = document.getElementById('e-nome-partita').value.trim();
+            if(tipo === 'Partita' && !nomePartita) return alert("Inserisci il nome della partita!");
+
+            document.getElementById('area-appello').style.display = 'block';
+            const tbody = document.getElementById('lista-appello');
+            tbody.innerHTML = '';
+            
+            const eventoEsistente = db.eventi.find(e => e.data === data);
+            
+            if(eventoEsistente) {
+                document.getElementById('titolo-appello').innerText = `[${db.nome}] Modifica Evento del ` + new Date(data).toLocaleDateString('it-IT');
+            } else {
+                document.getElementById('titolo-appello').innerText = `[${db.nome}] Nuovo Registro Presenze`;
+            }
+
+            db.giocatori.forEach(g => {
+                const presEsistente = eventoEsistente ? eventoEsistente.presenze.find(p => p.id === g.id) : null;
+                const presente = presEsistente ? presEsistente.presente : true;
+                const nonAvvisato = presEsistente ? (presEsistente.nonAvvisato || false) : false;
+                const motivazione = presEsistente ? presEsistente.motivazione : '';
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${g.cognome} ${g.nome}</td>
+                    <td><input type="checkbox" id="chk-${g.id}" ${presente ? 'checked' : ''} style="width:20px;height:20px;" onchange="document.getElementById('navv-${g.id}').disabled = this.checked"></td>
+                    <td><input type="checkbox" id="navv-${g.id}" ${nonAvvisato ? 'checked' : ''} style="width:20px;height:20px;" title="Assenza non avvisata" ${presente ? 'disabled' : ''}></td>
+                    <td><input type="text" id="mot-${g.id}" placeholder="Es. Infortunio, Scuola..." value="${motivazione}"></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function salvaEvento() {
+            const db = getSquadra();
+            const data = document.getElementById('e-data').value;
+            const tipo = document.getElementById('e-tipo').value;
+            const nomePartita = tipo === 'Partita' ? document.getElementById('e-nome-partita').value.trim() : '';
+            let presenze = [];
+            
+            db.giocatori.forEach(g => {
+                presenze.push({
+                    id: g.id,
+                    presente: document.getElementById(`chk-${g.id}`).checked,
+                    nonAvvisato: document.getElementById(`navv-${g.id}`).checked,
+                    motivazione: document.getElementById(`mot-${g.id}`).value.trim()
+                });
+            });
+
+            const index = db.eventi.findIndex(e => e.data === data);
+            if(index > -1) {
+                db.eventi[index] = { data, tipo, nomePartita, presenze };
+            } else {
+                db.eventi.push({ data, tipo, nomePartita, presenze });
+            }
+
+            db.eventi.sort((a, b) => new Date(b.data) - new Date(a.data));
+
+            salvaLocale();
+            controllaDataEsistente();
+            alert(`Appello per la squadra "${db.nome}" salvato con successo!`);
+        }
+
+        function aggiornaUI() {
+            const db = getSquadra();
+            
+            // 1. Rosa Giocatori
+            document.getElementById('titolo-rosa').innerText = `Gestione Rosa (${db.nome || 'Squadra'})`;
+            const tbodyG = document.getElementById('lista-giocatori');
+            tbodyG.innerHTML = '';
+            
+            db.giocatori.sort((a,b) => a.cognome.localeCompare(b.cognome)).forEach(g => {
+                tbodyG.innerHTML += `<tr><td><strong>${g.cognome}</strong> ${g.nome}</td><td>${g.ruolo}</td><td><button class="btn btn-danger" onclick="eliminaGiocatore('${g.id}')">X</button></td></tr>`;
+            });
+
+            // 2. Eventi della squadra attiva
+            const selectEventi = document.getElementById('selettore-evento');
+            const dataCorrente = selectEventi.value;
+            selectEventi.innerHTML = '<option value="">-- Crea Nuovo Evento --</option>';
+
+            db.eventi.forEach(ev => {
+                const label = ev.tipo === 'Partita' ? `Partita: ${ev.nomePartita}` : 'Allenamento';
+                const dataFormat = new Date(ev.data).toLocaleDateString('it-IT');
+                selectEventi.innerHTML += `<option value="${ev.data}">${dataFormat} - ${label}</option>`;
+            });
+
+            if(db.eventi.find(e => e.data === dataCorrente)) selectEventi.value = dataCorrente;
+
+            // 3. Popola Opzioni Sezione PDF
+            const pdfSquadraId = document.getElementById('pdf-squadra-select').value || appData.squadraAttivaId;
+            aggiornaOpzioniPdfSquadra(pdfSquadraId);
+        }
+
+        function aggiornaOpzioniPdfSquadra(sqId) {
+            const dbPdf = getSquadra(sqId);
+            
+            // Popola Eventi PDF
+            const selectPdfEventi = document.getElementById('pdf-evento-select');
+            selectPdfEventi.innerHTML = '<option value="">-- Seleziona Evento --</option>';
+            dbPdf.eventi.forEach(ev => {
+                const label = ev.tipo === 'Partita' ? `Partita: ${ev.nomePartita}` : 'Allenamento';
+                const dataFormat = new Date(ev.data).toLocaleDateString('it-IT');
+                selectPdfEventi.innerHTML += `<option value="${ev.data}">${dataFormat} - ${label}</option>`;
+            });
+
+            // Popola Giocatori PDF
+            const selectPdfGiocatori = document.getElementById('pdf-giocatore-select');
+            selectPdfGiocatori.innerHTML = '<option value="">-- Seleziona Giocatore --</option>';
+            dbPdf.giocatori.sort((a,b) => a.cognome.localeCompare(b.cognome)).forEach(g => {
+                selectPdfGiocatori.innerHTML += `<option value="${g.id}">${g.cognome} ${g.nome}</option>`;
+            });
+        }
+
+        async function esportaDatiSceltaCartella() {
+            const sqId = document.getElementById('backup-squadra-select').value || appData.squadraAttivaId;
+            const db = getSquadra(sqId);
+            const dataStr = JSON.stringify(db, null, 2);
+            const nomeSquadraClean = (db.nome || 'Squadra').replace(/[^a-z0-9]/gi, '_');
+            const nomeFile = `Backup_${nomeSquadraClean}_${new Date().toISOString().slice(0,10)}.json`;
+
+            try {
+                if (window.showSaveFilePicker) {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: nomeFile,
+                        types: [{
+                            description: 'File di Backup JSON',
+                            accept: {'application/json': ['.json']},
+                        }],
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(dataStr);
+                    await writable.close();
+                    alert(`Dati della squadra "${db.nome}" salvati con successo!`);
+                } else {
+                    const blob = new Blob([dataStr], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const anchor = document.createElement('a');
+                    anchor.href = url;
+                    anchor.download = nomeFile;
+                    document.body.appendChild(anchor);
+                    anchor.click();
+                    anchor.remove();
+                    URL.revokeObjectURL(url);
+                    alert(`Backup salvato nei Download per la squadra "${db.nome}".`);
+                }
+            } catch (err) {
+                if (err.name !== 'AbortError') console.error(err);
+            }
+        }
+
+        function importaDati() {
+            const file = document.getElementById('file-import').files[0];
+            if(!file) return alert("Seleziona un file JSON di backup.");
+            
+            const sqId = document.getElementById('backup-squadra-select').value || appData.squadraAttivaId;
+            const db = getSquadra(sqId);
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    db.giocatori = imported.giocatori || [];
+                    db.eventi = imported.eventi || imported.allenamenti || [];
+                    if (imported.nome) db.nome = imported.nome;
+                    salvaLocale();
+                    controllaDataEsistente();
+                    aggiornaTuttiSelettoriSquadre();
+                    alert(`Dati ripristinati/sovrascritti con successo sulla squadra "${db.nome}"!`);
+                } catch(err) {
+                    alert("Errore nella lettura del file JSON!");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function generaPDFEventoForm() {
+            const sqId = document.getElementById('pdf-squadra-select').value;
+            const data = document.getElementById('pdf-evento-select').value;
+            generaPDFEvento(sqId, data);
+        }
+
+        function generaPDFEvento(squadraId, dataParam) {
+            const sqId = squadraId || document.getElementById('pdf-squadra-select').value;
+            const db = getSquadra(sqId);
+            const data = dataParam || document.getElementById('pdf-evento-select').value;
+            if(!data) return alert("Seleziona un evento prima di scaricare il PDF.");
+
+            const evento = db.eventi.find(e => e.data === data);
+            if(!evento) return alert("Evento non trovato!");
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            const dataFormat = new Date(evento.data).toLocaleDateString('it-IT');
+            const titolo = evento.tipo === 'Partita' ? `Partita: ${evento.nomePartita || ''}` : 'Allenamento';
+
+            doc.setFontSize(18);
+            doc.text(`[Squadra: ${db.nome}] Report Evento: ${titolo}`, 14, 20);
+            doc.setFontSize(12);
+            doc.text(`Data: ${dataFormat}`, 14, 28);
+
+            let pres = 0; let ass = 0;
+            const rows = [];
+
+            db.giocatori.sort((a,b) => a.cognome.localeCompare(b.cognome)).forEach(g => {
+                const p = evento.presenze.find(x => x.id === g.id);
+                const presente = p ? p.presente : false;
+                const nonAvvisato = p ? (p.nonAvvisato || false) : false;
+                const mot = p ? p.motivazione : '';
+
+                if(presente) pres++; else ass++;
+                
+                const stato = presente ? 'Presente' : (nonAvvisato ? 'Ass. Non Avvisato' : 'Assente');
+
+                rows.push([
+                    `${g.cognome} ${g.nome}`,
+                    g.ruolo || 'ND',
+                    stato,
+                    mot
+                ]);
+            });
+
+            doc.setFontSize(10);
+            doc.text(`Presenti: ${pres} | Assenti: ${ass} | Totale Rosa: ${db.giocatori.length}`, 14, 35);
+
+            doc.autoTable({
+                startY: 40,
+                head: [['Giocatore', 'Ruolo', 'Stato', 'Motivazione / Note']],
+                body: rows,
+                theme: 'striped',
+                headStyles: { fillColor: [44, 62, 80] }
+            });
+
+            doc.save(`Evento_${db.nome}_${evento.data}_${evento.tipo}.pdf`);
+        }
+
+        function generaPDFGiocatoreForm() {
+            const sqId = document.getElementById('pdf-squadra-select').value;
+            const idGio = document.getElementById('pdf-giocatore-select').value;
+            if(!idGio) return alert("Seleziona un giocatore");
+            
+            const db = getSquadra(sqId);
+            const giocatore = db.giocatori.find(g => g.id === idGio);
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            doc.setFontSize(18);
+            doc.text(`[Squadra: ${db.nome}] Presenze: ${giocatore.cognome} ${giocatore.nome}`, 14, 20);
+            
+            const rows = [];
+            let presenzeTot = 0; let assenzeTot = 0;
+            const eventiOrdinati = [...db.eventi].sort((a,b) => new Date(a.data) - new Date(b.data));
+
+            eventiOrdinati.forEach(ev => {
+                const p = ev.presenze.find(x => x.id === idGio);
+                if(p) {
+                    if(p.presente) presenzeTot++; else assenzeTot++;
+                    const tipoEvento = ev.tipo || 'Allenamento';
+                    const dettaglio = ev.nomePartita ? ` (${ev.nomePartita})` : '';
+                    
+                    const stato = p.presente ? 'Presente' : (p.nonAvvisato ? 'Ass. Non Avvisato' : 'Assente');
+                    
+                    rows.push([
+                        new Date(ev.data).toLocaleDateString('it-IT'), 
+                        tipoEvento + dettaglio,
+                        stato, 
+                        p.motivazione
+                    ]);
+                }
+            });
+
+            doc.setFontSize(12);
+            doc.text(`Totale Eventi: ${presenzeTot + assenzeTot} | Presente: ${presenzeTot} | Assente: ${assenzeTot}`, 14, 30);
+            doc.autoTable({
+                startY: 35,
+                head: [['Data', 'Tipo Evento', 'Stato', 'Motivazione/Note']],
+                body: rows,
+                theme: 'striped',
+                headStyles: { fillColor: [44, 62, 80] }
+            });
+
+            doc.save(`Report_${db.nome}_${giocatore.cognome}_${giocatore.nome}.pdf`);
+        }
+
+        function generaPDFMeseForm() {
+            const sqId = document.getElementById('pdf-squadra-select').value;
+            const meseScelto = document.getElementById('pdf-mese').value; 
+            if(!meseScelto) return alert("Seleziona un mese");
+            
+            const db = getSquadra(sqId);
+            const [anno, mese] = meseScelto.split('-');
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            doc.setFontSize(18);
+            doc.text(`[Squadra: ${db.nome}] Report Mese: ${mese}/${anno}`, 14, 20);
+
+            const eventiMese = db.eventi.filter(e => e.data.startsWith(meseScelto));
+            if(eventiMese.length === 0) return alert("Nessun evento trovato in questo mese per questa squadra.");
+
+            const rows = [];
+            db.giocatori.forEach(g => {
+                let pres = 0; let ass = 0; let note = [];
+                eventiMese.forEach(ev => {
+                    const p = ev.presenze.find(x => x.id === g.id);
+                    if(p) {
+                        if(p.presente) pres++; else {
+                            ass++;
+                            const giorno = new Date(ev.data).getDate();
+                            const tipo = ev.tipo === 'Partita' ? 'P' : 'A';
+                            
+                            let testoNota = p.nonAvvisato ? "Non avvisato" : "";
+                            if(p.motivazione) testoNota = testoNota ? `${testoNota} - ${p.motivazione}` : p.motivazione;
+                            
+                            if(testoNota) note.push(`[${giorno}] ${tipo}: ${testoNota}`);
+                        }
+                    }
+                });
+                rows.push([`${g.cognome} ${g.nome}`, `${pres}`, `${ass}`, note.join(', ')]);
+            });
+
+            doc.autoTable({
+                startY: 30,
+                head: [['Giocatore', 'Presenze Totali', 'Assenze Totali', 'Note Assenze']],
+                body: rows,
+                theme: 'grid',
+                headStyles: { fillColor: [52, 152, 219] }
+            });
+
+            doc.save(`Report_${db.nome}_${meseScelto}.pdf`);
+        }
+    </script>
+</body>
+</html>
