@@ -3,10 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestionale Pallamano Multi-Squadra</title>
+    <title>Gestionale Pallamano Multi-Squadra (Realtime)</title>
     <!-- Librerie per la generazione dei PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    
+    <!-- Firebase SDK Modular -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        // LA TUA CONFIGURAZIONE FIREBASE INSERITA QUI
+        const firebaseConfig = {
+          apiKey: "AIzaSyCt7QZwKKUKJIHlvnrrNrm43bvpOykhHSU",
+          authDomain: "pallamano-presenze.firebaseapp.com",
+          // NOTA: Ho aggiunto il databaseURL. Se non dovesse funzionare, controlla nel Passaggio 4 se il link finisce con ".firebaseio.com" anziché ".europe-west1.firebasedatabase.app" e modificalo.
+          databaseURL: "https://pallamano-presenze-default-rtdb.europe-west1.firebasedatabase.app",
+          projectId: "pallamano-presenze",
+          storageBucket: "pallamano-presenze.firebasestorage.app",
+          messagingSenderId: "442176414376",
+          appId: "1:442176414376:web:a14ca4ee0f48f2e05c189d"
+        };
+
+        // Inizializza Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Riferimento globale del DB condiviso
+        const dbRef = ref(db, 'pallamano_app_data');
+
+        // Ascolto real-time delle modifiche da qualsiasi utente/dispositivo
+        onValue(dbRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                window.appData = data;
+                if (!window.appData.squadre) window.appData.squadre = {};
+            } else {
+                // Inizializzazione dati di default se il database è vuoto
+                const defaultId = 'squadra_' + Date.now();
+                window.appData = {
+                    squadraAttivaId: defaultId,
+                    squadre: {
+                        [defaultId]: { nome: 'Squadra Predefinita', giocatori: [], eventi: [] }
+                    }
+                };
+                salvaSuCloud();
+            }
+            aggiornaTuttiSelettoriSquadre();
+            aggiornaUI();
+            controllaDataEsistente();
+        });
+
+        // Funzione globale per salvare su Firebase Cloud
+        window.salvaSuCloud = function() {
+            set(ref(db, 'pallamano_app_data'), window.appData);
+        };
+    </script>
+
     <style>
         :root {
             --primary: #2c3e50;
@@ -41,13 +94,14 @@
         .highlight { background: #e8f4f8; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 5px solid var(--accent); }
         .action-bar { display: flex; gap: 10px; margin-top: 15px; }
         .squadra-box { background: #eef7fc; border: 1px solid #bce1f3; padding: 10px 15px; border-radius: 6px; margin-bottom: 15px; }
+        .sync-badge { background: #2ecc71; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
     </style>
 </head>
 <body>
 
     <header>
         <div>
-            <h2>Gestionale Squadre</h2>
+            <h2>Gestionale Squadre <span class="sync-badge">☁️ Cloud Sync</span></h2>
         </div>
         <div class="squadra-selector-header">
             <label style="margin:0; color:white;">Squadra Attiva:</label>
@@ -203,84 +257,47 @@
     </div>
 
     <script>
-        // Struttura dati globale
-        let appData = {
+        window.appData = {
             squadraAttivaId: '',
-            squadre: {} // Struttura: { 'id1': { nome: 'Under 15', giocatori: [], eventi: [] } }
+            squadre: {}
         };
 
         function getSquadra(id) {
-            const sqId = id || appData.squadraAttivaId;
-            if (!sqId || !appData.squadre[sqId]) {
+            const sqId = id || window.appData.squadraAttivaId;
+            if (!sqId || !window.appData.squadre || !window.appData.squadre[sqId]) {
                 return { giocatori: [], eventi: [], nome: '' };
             }
-            return appData.squadre[sqId];
+            if (!window.appData.squadre[sqId].giocatori) window.appData.squadre[sqId].giocatori = [];
+            if (!window.appData.squadre[sqId].eventi) window.appData.squadre[sqId].eventi = [];
+            return window.appData.squadre[sqId];
         }
 
         window.onload = () => {
-            const saved = localStorage.getItem('pallamano_multisquadra_db');
-            if (saved) {
-                try {
-                    appData = JSON.parse(saved);
-                } catch(e) { console.error(e); }
-            }
-
-            // Migrazione da vecchia versione a versione multi-squadra
-            const oldSaved = localStorage.getItem('pallamano_db');
-            if (oldSaved && Object.keys(appData.squadre).length === 0) {
-                try {
-                    const parsedOld = JSON.parse(oldSaved);
-                    const defaultId = 'squadra_default_' + Date.now();
-                    appData.squadre[defaultId] = {
-                        nome: 'Prima Squadra',
-                        giocatori: parsedOld.giocatori || [],
-                        eventi: parsedOld.eventi || parsedOld.allenamenti || []
-                    };
-                    appData.squadraAttivaId = defaultId;
-                    salvaLocale();
-                } catch(e) { console.error(e); }
-            }
-
-            // Se non esistono squadre, crea una squadra predefinita
-            if (Object.keys(appData.squadre).length === 0) {
-                const defaultId = 'squadra_' + Date.now();
-                appData.squadre[defaultId] = { nome: 'Squadra Predefinita', giocatori: [], eventi: [] };
-                appData.squadraAttivaId = defaultId;
-                salvaLocale();
-            }
-
             document.getElementById('e-data').valueAsDate = new Date();
-            aggiornaTuttiSelettoriSquadre();
-            aggiornaUI();
-            controllaDataEsistente();
         };
-
-        function salvaLocale() {
-            localStorage.setItem('pallamano_multisquadra_db', JSON.stringify(appData));
-            aggiornaUI();
-        }
 
         function aggiornaTuttiSelettoriSquadre() {
             const selettori = document.querySelectorAll('.select-squadra-global, #backup-squadra-select, #pdf-squadra-select');
             selettori.forEach(sel => {
-                const valCorrente = sel.value || appData.squadraAttivaId;
+                const valCorrente = sel.value || window.appData.squadraAttivaId;
                 sel.innerHTML = '';
-                Object.keys(appData.squadre).forEach(id => {
-                    const sq = appData.squadre[id];
-                    const opt = document.createElement('option');
-                    opt.value = id;
-                    opt.textContent = sq.nome;
-                    sel.appendChild(opt);
-                });
-                sel.value = appData.squadre[valCorrente] ? valCorrente : appData.squadraAttivaId;
+                if (window.appData.squadre) {
+                    Object.keys(window.appData.squadre).forEach(id => {
+                        const sq = window.appData.squadre[id];
+                        const opt = document.createElement('option');
+                        opt.value = id;
+                        opt.textContent = sq.nome;
+                        sel.appendChild(opt);
+                    });
+                }
+                sel.value = window.appData.squadre && window.appData.squadre[valCorrente] ? valCorrente : window.appData.squadraAttivaId;
             });
         }
 
         function cambiaSquadraGlobal(nuovoId) {
-            if (!nuovoId || !appData.squadre[nuovoId]) return;
-            appData.squadraAttivaId = nuovoId;
+            if (!nuovoId || !window.appData.squadre[nuovoId]) return;
+            window.appData.squadraAttivaId = nuovoId;
             
-            // Aggiorna tutti i dropdown al valore selezionato
             document.querySelectorAll('.select-squadra-global, #backup-squadra-select, #pdf-squadra-select').forEach(sel => {
                 sel.value = nuovoId;
             });
@@ -288,7 +305,7 @@
             document.getElementById('area-appello').style.display = 'none';
             document.getElementById('selettore-evento').value = '';
             
-            salvaLocale();
+            window.salvaSuCloud();
             controllaDataEsistente();
         }
 
@@ -308,18 +325,17 @@
                         let giocatori = importedData.giocatori || [];
                         let eventi = importedData.eventi || importedData.allenamenti || [];
 
-                        appData.squadre[idNuovaSquadra] = {
+                        window.appData.squadre[idNuovaSquadra] = {
                             nome: nomeSquadra,
                             giocatori: giocatori,
                             eventi: eventi
                         };
-                        appData.squadraAttivaId = idNuovaSquadra;
+                        window.appData.squadraAttivaId = idNuovaSquadra;
 
                         document.getElementById('nuova-squadra-nome').value = '';
                         fileInput.value = '';
 
-                        aggiornaTuttiSelettoriSquadre();
-                        salvaLocale();
+                        window.salvaSuCloud();
                         alert(`Squadra "${nomeSquadra}" creata con successo e popolata dal file JSON!`);
                     } catch(err) {
                         alert("Errore durante la lettura del file JSON!");
@@ -327,30 +343,28 @@
                 };
                 reader.readAsText(file);
             } else {
-                appData.squadre[idNuovaSquadra] = {
+                window.appData.squadre[idNuovaSquadra] = {
                     nome: nomeSquadra,
                     giocatori: [],
                     eventi: []
                 };
-                appData.squadraAttivaId = idNuovaSquadra;
+                window.appData.squadraAttivaId = idNuovaSquadra;
 
                 document.getElementById('nuova-squadra-nome').value = '';
-                aggiornaTuttiSelettoriSquadre();
-                salvaLocale();
+                window.salvaSuCloud();
                 alert(`Squadra "${nomeSquadra}" creata con successo!`);
             }
         }
 
         function eliminaSquadraCorrente() {
             const sqAttiva = getSquadra();
-            if (Object.keys(appData.squadre).length <= 1) {
+            if (Object.keys(window.appData.squadre).length <= 1) {
                 return alert("Impossibile eliminare l'unica squadra rimasta!");
             }
             if (confirm(`Sei sicuro di voler eliminare la squadra "${sqAttiva.nome}" e tutti i suoi dati?`)) {
-                delete appData.squadre[appData.squadraAttivaId];
-                appData.squadraAttivaId = Object.keys(appData.squadre)[0];
-                aggiornaTuttiSelettoriSquadre();
-                salvaLocale();
+                delete window.appData.squadre[window.appData.squadraAttivaId];
+                window.appData.squadraAttivaId = Object.keys(window.appData.squadre)[0];
+                window.salvaSuCloud();
             }
         }
 
@@ -402,7 +416,7 @@
                 document.getElementById('g-nome').value = '';
                 document.getElementById('g-cognome').value = '';
                 document.getElementById('g-ruolo').value = '';
-                salvaLocale();
+                window.salvaSuCloud();
             } else {
                 alert("Inserisci almeno Nome e Cognome.");
             }
@@ -412,7 +426,7 @@
             if(confirm("Sei sicuro di voler eliminare questo giocatore?")) {
                 const db = getSquadra();
                 db.giocatori = db.giocatori.filter(g => g.id !== id);
-                salvaLocale();
+                window.salvaSuCloud();
             }
         }
 
@@ -504,9 +518,8 @@
 
             db.eventi.sort((a, b) => new Date(b.data) - new Date(a.data));
 
-            salvaLocale();
-            controllaDataEsistente();
-            alert(`Appello per la squadra "${db.nome}" salvato con successo!`);
+            window.salvaSuCloud();
+            alert(`Appello per la squadra "${db.nome}" salvato in Cloud con successo!`);
         }
 
         function aggiornaUI() {
@@ -535,14 +548,13 @@
             if(db.eventi.find(e => e.data === dataCorrente)) selectEventi.value = dataCorrente;
 
             // 3. Popola Opzioni Sezione PDF
-            const pdfSquadraId = document.getElementById('pdf-squadra-select').value || appData.squadraAttivaId;
+            const pdfSquadraId = document.getElementById('pdf-squadra-select').value || window.appData.squadraAttivaId;
             aggiornaOpzioniPdfSquadra(pdfSquadraId);
         }
 
         function aggiornaOpzioniPdfSquadra(sqId) {
             const dbPdf = getSquadra(sqId);
             
-            // Popola Eventi PDF
             const selectPdfEventi = document.getElementById('pdf-evento-select');
             selectPdfEventi.innerHTML = '<option value="">-- Seleziona Evento --</option>';
             dbPdf.eventi.forEach(ev => {
@@ -551,7 +563,6 @@
                 selectPdfEventi.innerHTML += `<option value="${ev.data}">${dataFormat} - ${label}</option>`;
             });
 
-            // Popola Giocatori PDF
             const selectPdfGiocatori = document.getElementById('pdf-giocatore-select');
             selectPdfGiocatori.innerHTML = '<option value="">-- Seleziona Giocatore --</option>';
             dbPdf.giocatori.sort((a,b) => a.cognome.localeCompare(b.cognome)).forEach(g => {
@@ -560,7 +571,7 @@
         }
 
         async function esportaDatiSceltaCartella() {
-            const sqId = document.getElementById('backup-squadra-select').value || appData.squadraAttivaId;
+            const sqId = document.getElementById('backup-squadra-select').value || window.appData.squadraAttivaId;
             const db = getSquadra(sqId);
             const dataStr = JSON.stringify(db, null, 2);
             const nomeSquadraClean = (db.nome || 'Squadra').replace(/[^a-z0-9]/gi, '_');
@@ -600,7 +611,7 @@
             const file = document.getElementById('file-import').files[0];
             if(!file) return alert("Seleziona un file JSON di backup.");
             
-            const sqId = document.getElementById('backup-squadra-select').value || appData.squadraAttivaId;
+            const sqId = document.getElementById('backup-squadra-select').value || window.appData.squadraAttivaId;
             const db = getSquadra(sqId);
 
             const reader = new FileReader();
@@ -610,10 +621,8 @@
                     db.giocatori = imported.giocatori || [];
                     db.eventi = imported.eventi || imported.allenamenti || [];
                     if (imported.nome) db.nome = imported.nome;
-                    salvaLocale();
-                    controllaDataEsistente();
-                    aggiornaTuttiSelettoriSquadre();
-                    alert(`Dati ripristinati/sovrascritti con successo sulla squadra "${db.nome}"!`);
+                    window.salvaSuCloud();
+                    alert(`Dati ripristinati/sovrascritti con successo in cloud sulla squadra "${db.nome}"!`);
                 } catch(err) {
                     alert("Errore nella lettura del file JSON!");
                 }
