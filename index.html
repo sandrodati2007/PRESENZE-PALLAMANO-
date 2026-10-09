@@ -17,7 +17,6 @@
         const firebaseConfig = {
           apiKey: "AIzaSyCt7QZwKKUKJIHlvnrrNrm43bvpOykhHSU",
           authDomain: "pallamano-presenze.firebaseapp.com",
-          // NOTA: Ho aggiunto il databaseURL. Se non dovesse funzionare, controlla nel Passaggio 4 se il link finisce con ".firebaseio.com" anziché ".europe-west1.firebasedatabase.app" e modificalo.
           databaseURL: "https://pallamano-presenze-default-rtdb.europe-west1.firebasedatabase.app",
           projectId: "pallamano-presenze",
           storageBucket: "pallamano-presenze.firebasestorage.app",
@@ -636,6 +635,9 @@
             generaPDFEvento(sqId, data);
         }
 
+        // ==========================================
+        // FIX IMPAGINAZIONE PDF EVENTO
+        // ==========================================
         function generaPDFEvento(squadraId, dataParam) {
             const sqId = squadraId || document.getElementById('pdf-squadra-select').value;
             const db = getSquadra(sqId);
@@ -648,13 +650,24 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
 
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const maxTextWidth = pageWidth - 28;
+
             const dataFormat = new Date(evento.data).toLocaleDateString('it-IT');
             const titolo = evento.tipo === 'Partita' ? `Partita: ${evento.nomePartita || ''}` : 'Allenamento';
 
-            doc.setFontSize(18);
-            doc.text(`[Squadra: ${db.nome}] Report Evento: ${titolo}`, 14, 20);
+            doc.setFontSize(16);
+            const titleTesto = `[Squadra: ${db.nome}] Report Evento: ${titolo}`;
+            // Andata a capo automatica per i titoli molto lunghi
+            const splitTitle = doc.splitTextToSize(titleTesto, maxTextWidth);
+            doc.text(splitTitle, 14, 20);
+            
+            // Calcola la posizione Y dinamica in base a quante righe ha preso il titolo
+            let startY = 20 + (splitTitle.length * 7);
+
             doc.setFontSize(12);
-            doc.text(`Data: ${dataFormat}`, 14, 28);
+            doc.text(`Data: ${dataFormat}`, 14, startY);
+            startY += 7;
 
             let pres = 0; let ass = 0;
             const rows = [];
@@ -678,19 +691,30 @@
             });
 
             doc.setFontSize(10);
-            doc.text(`Presenti: ${pres} | Assenti: ${ass} | Totale Rosa: ${db.giocatori.length}`, 14, 35);
+            doc.text(`Presenti: ${pres} | Assenti: ${ass} | Totale Rosa: ${db.giocatori.length}`, 14, startY);
+            startY += 5;
 
             doc.autoTable({
-                startY: 40,
+                startY: startY,
                 head: [['Giocatore', 'Ruolo', 'Stato', 'Motivazione / Note']],
                 body: rows,
                 theme: 'striped',
-                headStyles: { fillColor: [44, 62, 80] }
+                headStyles: { fillColor: [44, 62, 80] },
+                styles: { overflow: 'linebreak', cellWidth: 'wrap' },
+                columnStyles: {
+                    0: { cellWidth: 50 },
+                    1: { cellWidth: 30 },
+                    2: { cellWidth: 35 },
+                    3: { cellWidth: 'auto' } // Questa colonna prende lo spazio rimasto e fa andare a capo le note
+                }
             });
 
             doc.save(`Evento_${db.nome}_${evento.data}_${evento.tipo}.pdf`);
         }
 
+        // ==========================================
+        // FIX IMPAGINAZIONE PDF GIOCATORE
+        // ==========================================
         function generaPDFGiocatoreForm() {
             const sqId = document.getElementById('pdf-squadra-select').value;
             const idGio = document.getElementById('pdf-giocatore-select').value;
@@ -701,8 +725,15 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             
-            doc.setFontSize(18);
-            doc.text(`[Squadra: ${db.nome}] Presenze: ${giocatore.cognome} ${giocatore.nome}`, 14, 20);
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const maxTextWidth = pageWidth - 28;
+
+            doc.setFontSize(16);
+            const titleTesto = `[Squadra: ${db.nome}] Presenze: ${giocatore.cognome} ${giocatore.nome}`;
+            const splitTitle = doc.splitTextToSize(titleTesto, maxTextWidth);
+            doc.text(splitTitle, 14, 20);
+            
+            let startY = 20 + (splitTitle.length * 7);
             
             const rows = [];
             let presenzeTot = 0; let assenzeTot = 0;
@@ -727,18 +758,30 @@
             });
 
             doc.setFontSize(12);
-            doc.text(`Totale Eventi: ${presenzeTot + assenzeTot} | Presente: ${presenzeTot} | Assente: ${assenzeTot}`, 14, 30);
+            doc.text(`Totale Eventi: ${presenzeTot + assenzeTot} | Presente: ${presenzeTot} | Assente: ${assenzeTot}`, 14, startY);
+            startY += 5;
+            
             doc.autoTable({
-                startY: 35,
+                startY: startY,
                 head: [['Data', 'Tipo Evento', 'Stato', 'Motivazione/Note']],
                 body: rows,
                 theme: 'striped',
-                headStyles: { fillColor: [44, 62, 80] }
+                headStyles: { fillColor: [44, 62, 80] },
+                styles: { overflow: 'linebreak', cellWidth: 'wrap' },
+                columnStyles: {
+                    0: { cellWidth: 30 },
+                    1: { cellWidth: 50 },
+                    2: { cellWidth: 35 },
+                    3: { cellWidth: 'auto' }
+                }
             });
 
             doc.save(`Report_${db.nome}_${giocatore.cognome}_${giocatore.nome}.pdf`);
         }
 
+        // ==========================================
+        // FIX IMPAGINAZIONE PDF MESE
+        // ==========================================
         function generaPDFMeseForm() {
             const sqId = document.getElementById('pdf-squadra-select').value;
             const meseScelto = document.getElementById('pdf-mese').value; 
@@ -749,8 +792,15 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
 
-            doc.setFontSize(18);
-            doc.text(`[Squadra: ${db.nome}] Report Mese: ${mese}/${anno}`, 14, 20);
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const maxTextWidth = pageWidth - 28;
+
+            doc.setFontSize(16);
+            const titleTesto = `[Squadra: ${db.nome}] Report Mese: ${mese}/${anno}`;
+            const splitTitle = doc.splitTextToSize(titleTesto, maxTextWidth);
+            doc.text(splitTitle, 14, 20);
+            
+            let startY = 20 + (splitTitle.length * 7);
 
             const eventiMese = db.eventi.filter(e => e.data.startsWith(meseScelto));
             if(eventiMese.length === 0) return alert("Nessun evento trovato in questo mese per questa squadra.");
@@ -777,11 +827,18 @@
             });
 
             doc.autoTable({
-                startY: 30,
+                startY: startY,
                 head: [['Giocatore', 'Presenze Totali', 'Assenze Totali', 'Note Assenze']],
                 body: rows,
                 theme: 'grid',
-                headStyles: { fillColor: [52, 152, 219] }
+                headStyles: { fillColor: [52, 152, 219] },
+                styles: { overflow: 'linebreak', cellWidth: 'wrap' },
+                columnStyles: {
+                    0: { cellWidth: 50 },
+                    1: { cellWidth: 30 },
+                    2: { cellWidth: 30 },
+                    3: { cellWidth: 'auto' }
+                }
             });
 
             doc.save(`Report_${db.nome}_${meseScelto}.pdf`);
