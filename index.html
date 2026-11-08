@@ -11,9 +11,9 @@
     <!-- Firebase SDK Modular -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        // LA TUA CONFIGURAZIONE FIREBASE INSERITA QUI
+        // CONFIGURAZIONE FIREBASE
         const firebaseConfig = {
           apiKey: "AIzaSyCt7QZwKKUKJIHlvnrrNrm43bvpOykhHSU",
           authDomain: "pallamano-presenze.firebaseapp.com",
@@ -31,14 +31,13 @@
         // Riferimento globale del DB condiviso
         const dbRef = ref(db, 'pallamano_app_data');
 
-        // Ascolto real-time delle modifiche da qualsiasi utente/dispositivo
+        // Ascolto real-time delle modifiche
         onValue(dbRef, (snapshot) => {
             const data = snapshot.val();
             if (data) {
                 window.appData = data;
                 if (!window.appData.squadre) window.appData.squadre = {};
             } else {
-                // Inizializzazione dati di default se il database è vuoto
                 const defaultId = 'squadra_' + Date.now();
                 window.appData = {
                     squadraAttivaId: defaultId,
@@ -50,7 +49,6 @@
             }
             aggiornaTuttiSelettoriSquadre();
             aggiornaUI();
-            controllaDataEsistente();
         });
 
         // Funzione globale per salvare su Firebase Cloud
@@ -81,7 +79,7 @@
         .tab-content.active { display: block; }
         .form-group { margin-bottom: 15px; }
         label { display: block; font-weight: bold; margin-bottom: 5px; }
-        input[type="text"], input[type="date"], select, input[type="month"], input[type="file"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        input[type="text"], input[type="date"], input[type="time"], select, input[type="month"], input[type="file"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
         button.btn { background: var(--accent); color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
         button.btn-success { background: var(--success); }
         button.btn-danger { background: var(--danger); }
@@ -96,6 +94,11 @@
         .sync-badge { background: #2ecc71; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
         .checkbox-container { display: flex; align-items: center; gap: 8px; font-weight: normal; margin-top: 10px; cursor: pointer; }
         .checkbox-container input { width: 18px; height: 18px; cursor: pointer; }
+        .btn-large-success { background: var(--success); color: white; font-size: 16px; padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
+        .btn-large-success:hover { background: #27ae60; }
+        .sub-nav { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .sub-nav button { background: #e0e0e0; color: #333; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .sub-nav button.active { background: var(--primary); color: white; }
     </style>
 </head>
 <body>
@@ -112,14 +115,14 @@
         <nav>
             <button class="active" onclick="cambiaTab('tab-squadre', this)">0. Gestione Squadre</button>
             <button onclick="cambiaTab('tab-giocatori', this)">1. Giocatori</button>
-            <button onclick="cambiaTab('tab-evento', this)">2. Appello & Eventi</button>
+            <button onclick="cambiaTab('tab-evento', this)">2. Eventi & Appello</button>
             <button onclick="cambiaTab('tab-dati', this)">3. Dati & PDF</button>
         </nav>
     </header>
 
     <div class="container">
 
-        <!-- SEZIONE 0: CREAZIONE E GESTIONE SQUADRE -->
+        <!-- SEZIONE 0: SQUADRE -->
         <div id="tab-squadre" class="tab-content active">
             <h3>Crea o Importa una Nuova Squadra</h3>
             <div class="card" style="margin-bottom: 20px;">
@@ -155,65 +158,107 @@
             </table>
         </div>
 
-        <!-- SEZIONE 2: EVENTO E APPELLO -->
+        <!-- SEZIONE 2: EVENTI & APPELLO (CON PAGINE SEPARATE CREAZIONE / VISIONE) -->
         <div id="tab-evento" class="tab-content">
-            <h3>Gestione Appello & Eventi</h3>
+            <h3>Gestione Eventi e Convocazioni</h3>
             
             <div class="squadra-box">
-                <label>Seleziona Squadra per Appello:</label>
+                <label>Seleziona Squadra Attiva:</label>
                 <select class="select-squadra-global" id="appello-squadra-select" onchange="cambiaSquadraGlobal(this.value)"></select>
             </div>
 
-            <div class="highlight">
-                <label>Carica un evento passato della squadra selezionata:</label>
-                <select id="selettore-evento" onchange="caricaEvento()">
-                    <option value="">-- Crea Nuovo Evento --</option>
-                </select>
+            <!-- SOTTO-NAVIGAZIONE TRA PAGINA CREAZIONE E PAGINA VISIONE -->
+            <div class="sub-nav">
+                <button id="btn-sub-crea" class="active" onclick="passaPaginaEvento('creazione')">➕ 1. Crea Nuovo Evento / Convocazione</button>
+                <button id="btn-sub-visione" onclick="passaPaginaEvento('visione')">📂 2. Visiona / Modifica Eventi Esistenti</button>
             </div>
 
-            <div style="display: flex; gap: 15px; margin-bottom: 15px; align-items: flex-start;">
-                <div style="flex: 1;">
-                    <label>Data</label>
-                    <input type="date" id="e-data" onchange="controllaDataEsistente()">
-                    <small id="avviso-data" style="display:block; margin-top:6px; font-weight:bold;"></small>
+            <!-- PAGINA A: CREAZIONE NUOVO EVENTO -->
+            <div id="sotto-tab-creazione" class="sub-tab-content">
+                <div class="card" style="background: #ffffff; border: 2px solid var(--success); margin-bottom: 20px;">
+                    <h4 style="margin-top:0; color:var(--primary);">Compila i dati per il nuovo evento</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label>Data *</label>
+                            <input type="date" id="e-data">
+                        </div>
+                        <div>
+                            <label>Ora (Permette più eventi nello stesso giorno)</label>
+                            <input type="time" id="e-ora">
+                        </div>
+                        <div>
+                            <label>Tipo Evento *</label>
+                            <select id="e-tipo" onchange="toggleCampiEvento()">
+                                <option value="Allenamento">Allenamento</option>
+                                <option value="Partita">Partita</option>
+                                <option value="Convocazione">Convocazione</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                        <div style="flex: 1; display: none;" id="div-nome-partita">
+                            <label>Dettaglio / Avversario (es. vs Squadra X)</label>
+                            <input type="text" id="e-nome-partita" placeholder="Es. Derby vs Milano">
+                        </div>
+                        <div style="flex: 1; display: none;" id="div-note-evento">
+                            <label>Note / Luogo Convocazione</label>
+                            <input type="text" id="e-note" placeholder="Es. Ritrovo PalaSport ore 15:00">
+                        </div>
+                    </div>
+
+                    <!-- UNICO TASTO VERDE -->
+                    <button class="btn-large-success" onclick="avviaNuovoEvento()">
+                        🚀 APRI TABELLA GIOCATORI (TUTTI ATTIVI) E CREA
+                    </button>
                 </div>
-                <div style="flex: 1;">
-                    <label>Tipo Evento</label>
-                    <select id="e-tipo" onchange="toggleNomePartita()">
-                        <option value="Allenamento">Allenamento</option>
-                        <option value="Partita">Partita</option>
+            </div>
+
+            <!-- PAGINA B: VISIONE / MODIFICA EVENTI ESISTENTI -->
+            <div id="sotto-tab-visione" class="sub-tab-content" style="display:none;">
+                <div class="highlight">
+                    <label>Seleziona un evento salvato per visionarlo o modificarlo:</label>
+                    <select id="selettore-evento-visione" onchange="caricaEventoPerVisione()">
+                        <option value="">-- Seleziona un evento dall'elenco --</option>
                     </select>
                 </div>
-                <div style="flex: 2; display: none;" id="div-nome-partita">
-                    <label>Nome Partita (es. vs Squadra X)</label>
-                    <input type="text" id="e-nome-partita" placeholder="Inserisci avversario o nome partita">
-                </div>
             </div>
 
-            <button class="btn" onclick="iniziaAppello()">Genera / Mostra Appello</button>
-            
-            <div id="area-appello" style="display:none; margin-top: 20px;">
+            <!-- CAMPO ID CORRENTE (Nascosto) -->
+            <input type="hidden" id="e-id-corrente" value="">
+
+            <!-- AREA COMUNE DELLA TABELLA APPELLO / CONVOCAZIONI -->
+            <div id="area-appello" style="display:none; margin-top: 20px; background: #fafafa; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
                 <hr>
-                <h4 id="titolo-appello">Registro Presenze</h4>
+                <h4 id="titolo-appello">Registro Presenze / Convocazioni</h4>
+                <p style="font-size:13px; color:#555;">Tutti i giocatori partono **attivi**. Togli la spunta solo a chi è assente o indisponibile.</p>
                 <table id="tabella-appello">
-                    <thead><tr><th>Giocatore</th><th>Presente</th><th>Non Avv.</th><th>Motivazione / Note</th></tr></thead>
+                    <thead id="head-appello">
+                        <tr>
+                            <th>Giocatore</th>
+                            <th>Stato</th>
+                            <th>Non Avv. / Rifiutato</th>
+                            <th>Motivazione / Note</th>
+                        </tr>
+                    </thead>
                     <tbody id="lista-appello"></tbody>
                 </table>
-                <div class="action-bar">
-                    <button class="btn btn-success" onclick="salvaEvento()">Salva Dati Appello</button>
-                    <button class="btn" onclick="generaPDFEvento(document.getElementById('pdf-squadra-select').value, document.getElementById('e-data').value)">📄 Scarica PDF Questo Evento</button>
+                <div class="action-bar" style="margin-top: 20px;">
+                    <button class="btn btn-success" onclick="salvaEventoInCloud()" style="padding: 12px 20px; font-size: 15px;">💾 SALVA MODIFICHE / NUOVO IN CLOUD</button>
+                    <button class="btn btn-danger" id="btn-elimina-evento" onclick="eliminaEventoCorrente()" style="display:none;">🗑️ Elimina Questo Evento</button>
+                    <button class="btn" onclick="generaPDFEventoFormCorrente()">📄 Scarica PDF Questo Evento</button>
                 </div>
             </div>
         </div>
 
-        <!-- SEZIONE 3: DATI, BACKUP E PDF -->
+        <!-- SEZIONE 3: DATI E PDF -->
         <div id="tab-dati" class="tab-content">
             <h3>Salvataggio Backup & Generazione Report PDF</h3>
             <div class="tools-grid">
                 
                 <div class="card">
                     <h4>Backup e Ripristino</h4>
-                    <p style="font-size: 13px; color: #666; margin-top: 0;">Il backup includerà automaticamente **tutte le squadre** presenti nel sistema senza alcuna restrizione o scelta singola.</p>
+                    <p style="font-size: 13px; color: #666; margin-top: 0;">Il backup includerà automaticamente **tutte le squadre** presenti nel sistema.</p>
                     <button class="btn btn-success" onclick="esportaDatiSceltaCartella()" style="width: 100%; margin-bottom: 15px;">⬇️ Salva Backup Globale (Tutte le Squadre)...</button>
                     <hr style="margin: 15px 0;">
                     <div class="form-group">
@@ -278,6 +323,7 @@
 
         window.onload = () => {
             document.getElementById('e-data').valueAsDate = new Date();
+            toggleCampiEvento();
         };
 
         function aggiornaTuttiSelettoriSquadre() {
@@ -306,11 +352,34 @@
                 sel.value = nuovoId;
             });
 
-            document.getElementById('area-appello').style.display = 'none';
-            document.getElementById('selettore-evento').value = '';
-            
+            passaPaginaEvento('creazione');
             window.salvaSuCloud();
-            controllaDataEsistente();
+            aggiornaUI();
+        }
+
+        // GESTIONE CAMBIO PAGINA INTERNA (Creazione vs Visione)
+        function passaPaginaEvento(pagina) {
+            const btnCrea = document.getElementById('btn-sub-crea');
+            const btnVisione = document.getElementById('btn-sub-visione');
+            const divCrea = document.getElementById('sotto-tab-creazione');
+            const divVisione = document.getElementById('sotto-tab-visione');
+
+            if (pagina === 'creazione') {
+                btnCrea.classList.add('active');
+                btnVisione.classList.remove('active');
+                divCrea.style.display = 'block';
+                divVisione.style.display = 'none';
+                
+                // Pulisce l'ID per garantire che sia un evento totalmente nuovo
+                document.getElementById('e-id-corrente').value = '';
+                document.getElementById('area-appello').style.display = 'none';
+            } else {
+                btnVisione.classList.add('active');
+                btnCrea.classList.remove('active');
+                divVisione.style.display = 'block';
+                divCrea.style.display = 'none';
+                document.getElementById('area-appello').style.display = 'none';
+            }
         }
 
         function creaSquadra() {
@@ -324,9 +393,7 @@
                     try {
                         let importedData = JSON.parse(e.target.result);
                         
-                        // Gestione importazione sia di backup globali che di singole squadre
                         if (importedData.squadre) {
-                            // Backup globale
                             Object.keys(importedData.squadre).forEach(id => {
                                 window.appData.squadre[id] = importedData.squadre[id];
                             });
@@ -335,13 +402,16 @@
                             } else {
                                 window.appData.squadraAttivaId = Object.keys(window.appData.squadre)[0];
                             }
-                            alert("Backup globale di tutte le squadre importato con successo!");
+                            alert("Backup globale importato con successo!");
                         } else {
-                            // Singola squadra o formato precedente
                             if (!nomeSquadra) return alert("Inserisci un nome per la nuova squadra!");
                             const idNuovaSquadra = 'sq_' + Date.now();
                             let giocatori = importedData.giocatori || [];
                             let eventi = importedData.eventi || importedData.allenamenti || [];
+
+                            eventi.forEach((ev, idx) => {
+                                if(!ev.id) ev.id = 'ev_' + Date.now() + '_' + idx;
+                            });
 
                             window.appData.squadre[idNuovaSquadra] = {
                                 nome: nomeSquadra,
@@ -349,7 +419,7 @@
                                 eventi: eventi
                             };
                             window.appData.squadraAttivaId = idNuovaSquadra;
-                            alert(`Squadra "${nomeSquadra}" creata con successo e popolata dal file JSON!`);
+                            alert(`Squadra "${nomeSquadra}" creata con successo!`);
                         }
 
                         document.getElementById('nuova-squadra-nome').value = '';
@@ -358,7 +428,7 @@
                         aggiornaTuttiSelettoriSquadre();
                         aggiornaUI();
                     } catch(err) {
-                        alert("Errore durante la lettura del file JSON!");
+                        alert("Errore nella lettura del file JSON!");
                     }
                 };
                 reader.readAsText(file);
@@ -401,33 +471,10 @@
             btn.classList.add('active');
         }
 
-        function toggleNomePartita() {
+        function toggleCampiEvento() {
             const tipo = document.getElementById('e-tipo').value;
-            document.getElementById('div-nome-partita').style.display = tipo === 'Partita' ? 'block' : 'none';
-        }
-
-        function controllaDataEsistente() {
-            const data = document.getElementById('e-data').value;
-            const avviso = document.getElementById('avviso-data');
-            if(!data) {
-                avviso.innerHTML = '';
-                return;
-            }
-
-            const db = getSquadra();
-            const eventoEsistente = db.eventi.find(e => e.data === data);
-            if(eventoEsistente) {
-                const label = eventoEsistente.tipo === 'Partita' ? `Partita (${eventoEsistente.nomePartita || 'Senza nome'})` : 'Allenamento';
-                avviso.style.color = 'var(--danger)';
-                avviso.innerHTML = `⚠️ Esiste già un evento per [${db.nome}]: <strong>${label}</strong>. Cliccando "Genera Appello" lo modificherai.`;
-                
-                document.getElementById('e-tipo').value = eventoEsistente.tipo || 'Allenamento';
-                document.getElementById('e-nome-partita').value = eventoEsistente.nomePartita || '';
-                toggleNomePartita();
-            } else {
-                avviso.style.color = 'var(--success)';
-                avviso.innerHTML = `✅ Data libera per [${db.nome}] (Nuovo Evento).`;
-            }
+            document.getElementById('div-nome-partita').style.display = (tipo === 'Partita' || tipo === 'Convocazione') ? 'block' : 'none';
+            document.getElementById('div-note-evento').style.display = (tipo === 'Convocazione') ? 'block' : 'none';
         }
 
         function aggiungiGiocatore() {
@@ -458,76 +505,116 @@
             }
         }
 
-        function caricaEvento() {
-            const db = getSquadra();
-            const dataSelezionata = document.getElementById('selettore-evento').value;
-            if(!dataSelezionata) {
-                document.getElementById('e-data').valueAsDate = new Date();
-                document.getElementById('e-tipo').value = 'Allenamento';
-                document.getElementById('e-nome-partita').value = '';
-                toggleNomePartita();
-                controllaDataEsistente();
-                document.getElementById('area-appello').style.display = 'none';
-                return;
-            }
-
-            const evento = db.eventi.find(e => e.data === dataSelezionata);
-            if(evento) {
-                document.getElementById('e-data').value = evento.data;
-                document.getElementById('e-tipo').value = evento.tipo || 'Allenamento';
-                document.getElementById('e-nome-partita').value = evento.nomePartita || '';
-                toggleNomePartita();
-                controllaDataEsistente();
-                iniziaAppello();
-            }
-        }
-
-        function iniziaAppello() {
+        // TASTO VERDE: Genera un ID del tutto nuovo e apre la tabella con TUTTI ATTIVI
+        function avviaNuovoEvento() {
             const db = getSquadra();
             if(db.giocatori.length === 0) return alert(`Aggiungi prima dei giocatori per la squadra "${db.nome}"!`);
+            
             const data = document.getElementById('e-data').value;
             if(!data) return alert("Seleziona una data per l'evento!");
 
             const tipo = document.getElementById('e-tipo').value;
             const nomePartita = document.getElementById('e-nome-partita').value.trim();
-            if(tipo === 'Partita' && !nomePartita) return alert("Inserisci il nome della partita!");
+            if((tipo === 'Partita' || tipo === 'Convocazione') && !nomePartita) return alert("Inserisci il dettaglio o l'avversario dell'evento!");
+
+            // Assegna ID univoco garantendo che non sovrascriva nulla
+            const nuovoId = 'ev_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+            document.getElementById('e-id-corrente').value = nuovoId;
+            document.getElementById('btn-elimina-evento').style.display = 'none';
+
+            mostraTabellaGiocatori(true); // true = tutti spuntati attivi
+        }
+
+        // CARICA EVENTO ESISTENTE DALLA PAGINA VISIONE
+        function caricaEventoPerVisione() {
+            const db = getSquadra();
+            const idEvento = document.getElementById('selettore-evento-visione').value;
+            
+            if(!idEvento) {
+                document.getElementById('e-id-corrente').value = '';
+                document.getElementById('area-appello').style.display = 'none';
+                return;
+            }
+
+            const evento = db.eventi.find(e => e.id === idEvento);
+            if(evento) {
+                document.getElementById('e-id-corrente').value = evento.id;
+                document.getElementById('e-data').value = evento.data;
+                document.getElementById('e-ora').value = evento.ora || '';
+                document.getElementById('e-tipo').value = evento.tipo || 'Allenamento';
+                document.getElementById('e-nome-partita').value = evento.nomePartita || '';
+                document.getElementById('e-note').value = evento.note || '';
+                document.getElementById('btn-elimina-evento').style.display = 'inline-block';
+                toggleCampiEvento();
+                mostraTabellaGiocatori(false); // false = carica i dati salvati dell'evento
+            }
+        }
+
+        function mostraTabellaGiocatori(forzaTuttiAttivi) {
+            const db = getSquadra();
+            const data = document.getElementById('e-data').value;
+            const idEv = document.getElementById('e-id-corrente').value;
+            const tipo = document.getElementById('e-tipo').value;
 
             document.getElementById('area-appello').style.display = 'block';
             const tbody = document.getElementById('lista-appello');
             tbody.innerHTML = '';
             
-            const eventoEsistente = db.eventi.find(e => e.data === data);
+            const eventoEsistente = (!forzaTuttiAttivi && idEv) ? db.eventi.find(e => e.id === idEv) : null;
             
-            if(eventoEsistente) {
-                document.getElementById('titolo-appello').innerText = `[${db.nome}] Modifica Evento del ` + new Date(data).toLocaleDateString('it-IT');
+            const labelTipo = tipo === 'Convocazione' ? 'Convocazioni' : 'Registro Presenze';
+            const dataFormatted = new Date(data).toLocaleDateString('it-IT');
+            const oraFormatted = document.getElementById('e-ora').value ? ` ore ${document.getElementById('e-ora').value}` : '';
+            
+            document.getElementById('titolo-appello').innerText = `[${db.nome}] ${labelTipo} - ${tipo} del ${dataFormatted}${oraFormatted}`;
+
+            const thStato = document.querySelector('#head-appello th:nth-child(2)');
+            const thExtra = document.querySelector('#head-appello th:nth-child(3)');
+            if(tipo === 'Convocazione') {
+                thStato.innerText = 'Convocato';
+                thExtra.innerText = 'Rifiutato / Indisponibile';
             } else {
-                document.getElementById('titolo-appello').innerText = `[${db.nome}] Nuovo Registro Presenze`;
+                thStato.innerText = 'Presente';
+                thExtra.innerText = 'Ass. Non Avvisata';
             }
 
             db.giocatori.forEach(g => {
-                const presEsistente = eventoEsistente ? eventoEsistente.presenze.find(p => p.id === g.id) : null;
-                const presente = presEsistente ? presEsistente.presente : true;
-                const nonAvvisato = presEsistente ? (presEsistente.nonAvvisato || false) : false;
-                const motivazione = presEsistente ? presEsistente.motivazione : '';
+                let presente = true; 
+                let nonAvvisato = false;
+                let motivazione = '';
+
+                if (!forzaTuttiAttivi && eventoEsistente) {
+                    const presEsistente = eventoEsistente.presenze.find(p => p.id === g.id);
+                    if (presEsistente) {
+                        presente = presEsistente.presente;
+                        nonAvvisato = presEsistente.nonAvvisato || false;
+                        motivazione = presEsistente.motivazione || '';
+                    }
+                }
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${g.cognome} ${g.nome}</td>
-                    <td><input type="checkbox" id="chk-${g.id}" ${presente ? 'checked' : ''} style="width:20px;height:20px;" onchange="document.getElementById('navv-${g.id}').disabled = this.checked"></td>
-                    <td><input type="checkbox" id="navv-${g.id}" ${nonAvvisato ? 'checked' : ''} style="width:20px;height:20px;" title="Assenza non avvisata" ${presente ? 'disabled' : ''}></td>
-                    <td><input type="text" id="mot-${g.id}" placeholder="Es. Infortunio, Scuola..." value="${motivazione}"></td>
+                    <td><input type="checkbox" id="chk-${g.id}" ${presente ? 'checked' : ''} style="width:20px;height:20px;" onchange="if(this.checked) document.getElementById('navv-${g.id}').checked = false;"></td>
+                    <td><input type="checkbox" id="navv-${g.id}" ${nonAvvisato ? 'checked' : ''} style="width:20px;height:20px;" onchange="if(this.checked) document.getElementById('chk-${g.id}').checked = false;"></td>
+                    <td><input type="text" id="mot-${g.id}" placeholder="Es. Infortunio, Lavoro..." value="${motivazione}"></td>
                 `;
                 tbody.appendChild(tr);
             });
         }
 
-        function salvaEvento() {
+        function salvaEventoInCloud() {
             const db = getSquadra();
             const data = document.getElementById('e-data').value;
+            const ora = document.getElementById('e-ora').value;
             const tipo = document.getElementById('e-tipo').value;
-            const nomePartita = tipo === 'Partita' ? document.getElementById('e-nome-partita').value.trim() : '';
+            const nomePartita = document.getElementById('e-nome-partita').value.trim();
+            const note = document.getElementById('e-note').value.trim();
+            let idEv = document.getElementById('e-id-corrente').value;
+
+            if(!data) return alert("Inserisci una data!");
+
             let presenze = [];
-            
             db.giocatori.forEach(g => {
                 presenze.push({
                     id: g.id,
@@ -537,18 +624,42 @@
                 });
             });
 
-            const index = db.eventi.findIndex(e => e.data === data);
-            if(index > -1) {
-                db.eventi[index] = { data, tipo, nomePartita, presenze };
-            } else {
-                db.eventi.push({ data, tipo, nomePartita, presenze });
+            if (!idEv) {
+                idEv = 'ev_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+                document.getElementById('e-id-corrente').value = idEv;
             }
 
-            db.eventi.sort((a, b) => new Date(b.data) - new Date(a.data));
+            const nuovoEvento = { id: idEv, data, ora, tipo, nomePartita, note, presenze };
+
+            const index = db.eventi.findIndex(e => e.id === idEv);
+            if(index > -1) {
+                db.eventi[index] = nuovoEvento; 
+            } else {
+                db.eventi.push(nuovoEvento); 
+            }
+
+            // Ordinamento cronologico inverso
+            db.eventi.sort((a, b) => {
+                const dtA = new Date(a.data + (a.ora ? 'T' + a.ora : 'T00:00'));
+                const dtB = new Date(b.data + (b.ora ? 'T' + b.ora : 'T00:00'));
+                return dtB - dtA;
+            });
 
             window.salvaSuCloud();
             aggiornaUI();
-            alert(`Appello per la squadra "${db.nome}" salvato in Cloud con successo!`);
+            alert(`✅ Evento (${tipo}) salvato con successo come entità distinta!`);
+        }
+
+        function eliminaEventoCorrente() {
+            const idEv = document.getElementById('e-id-corrente').value;
+            if(!idEv) return;
+            const db = getSquadra();
+            if(confirm("Vuoi eliminare definitivamente questo specifico evento?")) {
+                db.eventi = db.eventi.filter(e => e.id !== idEv);
+                window.salvaSuCloud();
+                passaPaginaEvento('visione');
+                aggiornaUI();
+            }
         }
 
         function aggiornaUI() {
@@ -563,18 +674,22 @@
                 tbodyG.innerHTML += `<tr><td><strong>${g.cognome}</strong> ${g.nome}</td><td>${g.ruolo}</td><td><button class="btn btn-danger" onclick="eliminaGiocatore('${g.id}')">X</button></td></tr>`;
             });
 
-            // 2. Eventi della squadra attiva
-            const selectEventi = document.getElementById('selettore-evento');
-            const dataCorrente = selectEventi.value;
-            selectEventi.innerHTML = '<option value="">-- Crea Nuovo Evento --</option>';
+            // 2. Eventi distinti nella pagina Visione
+            const selectVisione = document.getElementById('selettore-evento-visione');
+            const idCorrente = document.getElementById('e-id-corrente').value;
+            selectVisione.innerHTML = '<option value="">-- Seleziona un evento dall\'elenco --</option>';
 
             db.eventi.forEach(ev => {
-                const label = ev.tipo === 'Partita' ? `Partita: ${ev.nomePartita}` : 'Allenamento';
+                let label = ev.tipo;
+                if(ev.nomePartita) label += `: ${ev.nomePartita}`;
                 const dataFormat = new Date(ev.data).toLocaleDateString('it-IT');
-                selectEventi.innerHTML += `<option value="${ev.data}">${dataFormat} - ${label}</option>`;
+                const oraFormat = ev.ora ? ` (${ev.ora})` : '';
+                selectVisione.innerHTML += `<option value="${ev.id}">${dataFormat}${oraFormat} - ${label}</option>`;
             });
 
-            if(db.eventi.find(e => e.data === dataCorrente)) selectEventi.value = dataCorrente;
+            if(idCorrente && db.eventi.find(e => e.id === idCorrente)) {
+                selectVisione.value = idCorrente;
+            }
 
             // 3. Popola Opzioni Sezione PDF
             const pdfSquadraId = document.getElementById('pdf-squadra-select').value || window.appData.squadraAttivaId;
@@ -587,9 +702,11 @@
             const selectPdfEventi = document.getElementById('pdf-evento-select');
             selectPdfEventi.innerHTML = '<option value="">-- Seleziona Evento --</option>';
             dbPdf.eventi.forEach(ev => {
-                const label = ev.tipo === 'Partita' ? `Partita: ${ev.nomePartita}` : 'Allenamento';
+                let label = ev.tipo;
+                if(ev.nomePartita) label += `: ${ev.nomePartita}`;
                 const dataFormat = new Date(ev.data).toLocaleDateString('it-IT');
-                selectPdfEventi.innerHTML += `<option value="${ev.data}">${dataFormat} - ${label}</option>`;
+                const oraFormat = ev.ora ? ` (${ev.ora})` : '';
+                selectPdfEventi.innerHTML += `<option value="${ev.id}">${dataFormat}${oraFormat} - ${label}</option>`;
             });
 
             const selectPdfGiocatori = document.getElementById('pdf-giocatore-select');
@@ -600,7 +717,6 @@
         }
 
         async function esportaDatiSceltaCartella() {
-            // Backup globale di TUTTE le squadre senza scelta singola
             const backupGlobale = {
                 squadraAttivaId: window.appData.squadraAttivaId,
                 squadre: window.appData.squadre
@@ -620,7 +736,7 @@
                     const writable = await handle.createWritable();
                     await writable.write(dataStr);
                     await writable.close();
-                    alert("Backup globale di tutte le squadre salvato con successo!");
+                    alert("Backup globale salvato con successo!");
                 } else {
                     const blob = new Blob([dataStr], { type: 'application/json' });
                     const url = URL.createObjectURL(blob);
@@ -654,17 +770,26 @@
                             window.appData.squadraAttivaId = Object.keys(window.appData.squadre)[0];
                         }
                     } else if (imported.giocatori || imported.eventi) {
-                        // Compatibilità con vecchio formato di singola squadra
                         const sqId = window.appData.squadraAttivaId;
                         const db = getSquadra(sqId);
                         db.giocatori = imported.giocatori || [];
                         db.eventi = imported.eventi || imported.allenamenti || [];
                         if (imported.nome) db.nome = imported.nome;
                     }
+
+                    Object.keys(window.appData.squadre).forEach(sqKey => {
+                        const sq = window.appData.squadre[sqKey];
+                        if(sq.eventi) {
+                            sq.eventi.forEach((ev, idx) => {
+                                if(!ev.id) ev.id = 'ev_' + Date.now() + '_' + idx;
+                            });
+                        }
+                    });
+
                     window.salvaSuCloud();
                     aggiornaTuttiSelettoriSquadre();
                     aggiornaUI();
-                    alert("Dati ripristinati/sovrascritti con successo in cloud!");
+                    alert("Dati ripristinati con successo in cloud!");
                 } catch(err) {
                     alert("Errore nella lettura del file JSON!");
                 }
@@ -672,19 +797,25 @@
             reader.readAsText(file);
         }
 
-        function generaPDFEventoForm() {
-            const sqId = document.getElementById('pdf-squadra-select').value;
-            const data = document.getElementById('pdf-evento-select').value;
-            generaPDFEvento(sqId, data);
+        function generaPDFEventoFormCorrente() {
+            const sqId = window.appData.squadraAttivaId;
+            const idEv = document.getElementById('e-id-corrente').value;
+            generaPDFEvento(sqId, idEv);
         }
 
-        function generaPDFEvento(squadraId, dataParam) {
+        function generaPDFEventoForm() {
+            const sqId = document.getElementById('pdf-squadra-select').value;
+            const idEv = document.getElementById('pdf-evento-select').value;
+            generaPDFEvento(sqId, idEv);
+        }
+
+        function generaPDFEvento(squadraId, idEvento) {
             const sqId = squadraId || document.getElementById('pdf-squadra-select').value;
             const db = getSquadra(sqId);
-            const data = dataParam || document.getElementById('pdf-evento-select').value;
-            if(!data) return alert("Seleziona un evento prima di scaricare il PDF.");
+            const idEv = idEvento || document.getElementById('pdf-evento-select').value;
+            if(!idEv) return alert("Seleziona un evento prima di scaricare il PDF.");
 
-            const evento = db.eventi.find(e => e.data === data);
+            const evento = db.eventi.find(e => e.id === idEv);
             if(!evento) return alert("Evento non trovato!");
 
             const escludiMotivazione = document.getElementById('pdf-escludi-motivazione').checked;
@@ -696,18 +827,24 @@
             const maxTextWidth = pageWidth - 28;
 
             const dataFormat = new Date(evento.data).toLocaleDateString('it-IT');
-            const titolo = evento.tipo === 'Partita' ? `Partita: ${evento.nomePartita || ''}` : 'Allenamento';
+            const oraFormat = evento.ora ? ` Ore ${evento.ora}` : '';
+            const titolo = evento.tipo === 'Partita' ? `Partita: ${evento.nomePartita || ''}` 
+                          : (evento.tipo === 'Convocazione' ? `Convocazione: ${evento.nomePartita || ''}` : 'Allenamento');
 
             doc.setFontSize(16);
-            const titleTesto = `[Squadra: ${db.nome}] Report Evento: ${titolo}`;
+            const titleTesto = `[Squadra: ${db.nome}] Report ${evento.tipo}: ${titolo}`;
             const splitTitle = doc.splitTextToSize(titleTesto, maxTextWidth);
             doc.text(splitTitle, 14, 20);
             
             let startY = 20 + (splitTitle.length * 7);
 
             doc.setFontSize(12);
-            doc.text(`Data: ${dataFormat}`, 14, startY);
+            doc.text(`Data: ${dataFormat}${oraFormat}`, 14, startY);
             startY += 7;
+            if(evento.note) {
+                doc.text(`Note/Luogo: ${evento.note}`, 14, startY);
+                startY += 7;
+            }
 
             let pres = 0; let ass = 0;
             const rows = [];
@@ -720,7 +857,12 @@
 
                 if(presente) pres++; else ass++;
                 
-                const stato = presente ? 'Presente' : (nonAvvisato ? 'Ass. Non Avvisato' : 'Assente');
+                let stato = '';
+                if(evento.tipo === 'Convocazione') {
+                    stato = presente ? 'Convocato' : (nonAvvisato ? 'Rifiutato / Indisp.' : 'Non Convocato');
+                } else {
+                    stato = presente ? 'Presente' : (nonAvvisato ? 'Ass. Non Avvisato' : 'Assente');
+                }
 
                 if (escludiMotivazione) {
                     rows.push([
@@ -738,8 +880,11 @@
                 }
             });
 
+            const labelPres = evento.tipo === 'Convocazione' ? 'Convocati' : 'Presenti';
+            const labelAss = evento.tipo === 'Convocazione' ? 'Non Convocati/Rifiutati' : 'Assenti';
+
             doc.setFontSize(10);
-            doc.text(`Presenti: ${pres} | Assenti: ${ass} | Totale Rosa: ${db.giocatori.length}`, 14, startY);
+            doc.text(`${labelPres}: ${pres} | ${labelAss}: ${ass} | Totale Rosa: ${db.giocatori.length}`, 14, startY);
             startY += 5;
 
             const headCols = escludiMotivazione 
@@ -753,7 +898,7 @@
             } : {
                 0: { cellWidth: 50 },
                 1: { cellWidth: 30 },
-                2: { cellWidth: 35 },
+                2: { cellWidth: 45 },
                 3: { cellWidth: 'auto' }
             };
 
@@ -767,7 +912,7 @@
                 columnStyles: columnStyles
             });
 
-            doc.save(`Evento_${db.nome}_${evento.data}_${evento.tipo}.pdf`);
+            doc.save(`${evento.tipo}_${db.nome}_${evento.data}.pdf`);
         }
 
         function generaPDFGiocatoreForm() {
@@ -786,7 +931,7 @@
             const maxTextWidth = pageWidth - 28;
 
             doc.setFontSize(16);
-            const titleTesto = `[Squadra: ${db.nome}] Presenze: ${giocatore.cognome} ${giocatore.nome}`;
+            const titleTesto = `[Squadra: ${db.nome}] Presenze e Convocazioni: ${giocatore.cognome} ${giocatore.nome}`;
             const splitTitle = doc.splitTextToSize(titleTesto, maxTextWidth);
             doc.text(splitTitle, 14, 20);
             
@@ -794,7 +939,7 @@
             
             const rows = [];
             let presenzeTot = 0; let assenzeTot = 0;
-            const eventiOrdinati = [...db.eventi].sort((a,b) => new Date(a.data) - new Date(b.data));
+            const eventiOrdinati = [...db.eventi].sort((a,b) => new Date(a.data + (a.ora ? 'T'+a.ora : 'T00:00')) - new Date(b.data + (b.ora ? 'T'+b.ora : 'T00:00')));
 
             eventiOrdinati.forEach(ev => {
                 const p = ev.presenze.find(x => x.id === idGio);
@@ -802,18 +947,24 @@
                     if(p.presente) presenzeTot++; else assenzeTot++;
                     const tipoEvento = ev.tipo || 'Allenamento';
                     const dettaglio = ev.nomePartita ? ` (${ev.nomePartita})` : '';
+                    const oraFormat = ev.ora ? ` ${ev.ora}` : '';
                     
-                    const stato = p.presente ? 'Presente' : (p.nonAvvisato ? 'Ass. Non Avvisato' : 'Assente');
+                    let stato = '';
+                    if(tipoEvento === 'Convocazione') {
+                        stato = p.presente ? 'Convocato' : (p.nonAvvisato ? 'Rifiutato / Indisp.' : 'Non Convocato');
+                    } else {
+                        stato = p.presente ? 'Presente' : (p.nonAvvisato ? 'Ass. Non Avvisato' : 'Assente');
+                    }
                     
                     if (escludiMotivazione) {
                         rows.push([
-                            new Date(ev.data).toLocaleDateString('it-IT'), 
+                            new Date(ev.data).toLocaleDateString('it-IT') + oraFormat, 
                             tipoEvento + dettaglio,
                             stato
                         ]);
                     } else {
                         rows.push([
-                            new Date(ev.data).toLocaleDateString('it-IT'), 
+                            new Date(ev.data).toLocaleDateString('it-IT') + oraFormat, 
                             tipoEvento + dettaglio,
                             stato, 
                             p.motivazione
@@ -823,21 +974,21 @@
             });
 
             doc.setFontSize(12);
-            doc.text(`Totale Eventi: ${presenzeTot + assenzeTot} | Presente: ${presenzeTot} | Assente: ${assenzeTot}`, 14, startY);
+            doc.text(`Totale Eventi: ${presenzeTot + assenzeTot} | Presenze/Convocazioni: ${presenzeTot} | Assenze/Non Conv.: ${assenzeTot}`, 14, startY);
             startY += 5;
             
             const headCols = escludiMotivazione 
-                ? [['Data', 'Tipo Evento', 'Stato']] 
-                : [['Data', 'Tipo Evento', 'Stato', 'Motivazione/Note']];
+                ? [['Data/Ora', 'Tipo Evento', 'Stato']] 
+                : [['Data/Ora', 'Tipo Evento', 'Stato', 'Motivazione/Note']];
 
             const columnStyles = escludiMotivazione ? {
-                0: { cellWidth: 40 },
+                0: { cellWidth: 45 },
                 1: { cellWidth: 80 },
-                2: { cellWidth: 50 }
+                2: { cellWidth: 45 }
             } : {
-                0: { cellWidth: 30 },
+                0: { cellWidth: 35 },
                 1: { cellWidth: 50 },
-                2: { cellWidth: 35 },
+                2: { cellWidth: 40 },
                 3: { cellWidth: 'auto' }
             };
 
@@ -889,9 +1040,9 @@
                             ass++;
                             if (!escludiMotivazione) {
                                 const giorno = new Date(ev.data).getDate();
-                                const tipo = ev.tipo === 'Partita' ? 'P' : 'A';
+                                const tipo = ev.tipo === 'Partita' ? 'P' : (ev.tipo === 'Convocazione' ? 'C' : 'A');
                                 
-                                let testoNota = p.nonAvvisato ? "Non avvisato" : "";
+                                let testoNota = p.nonAvvisato ? "Non avvisato/Rifiutato" : "";
                                 if(p.motivazione) testoNota = testoNota ? `${testoNota} - ${p.motivazione}` : p.motivazione;
                                 
                                 if(testoNota) note.push(`[${giorno}] ${tipo}: ${testoNota}`);
@@ -908,8 +1059,8 @@
             });
 
             const headCols = escludiMotivazione 
-                ? [['Giocatore', 'Presenze Totali', 'Assenze Totali']] 
-                : [['Giocatore', 'Presenze Totali', 'Assenze Totali', 'Note Assenze']];
+                ? [['Giocatore', 'Presenze/Convocazioni', 'Assenze/Non Conv.']] 
+                : [['Giocatore', 'Presenze/Convocazioni', 'Assenze/Non Conv.', 'Note Assenze / Rifiuti']];
 
             const columnStyles = escludiMotivazione ? {
                 0: { cellWidth: 90 },
@@ -917,8 +1068,8 @@
                 2: { cellWidth: 40 }
             } : {
                 0: { cellWidth: 50 },
-                1: { cellWidth: 30 },
-                2: { cellWidth: 30 },
+                1: { cellWidth: 35 },
+                2: { cellWidth: 35 },
                 3: { cellWidth: 'auto' }
             };
 
