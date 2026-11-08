@@ -31,13 +31,19 @@
         // Riferimento globale del DB condiviso
         const dbRef = ref(db, 'pallamano_app_data');
 
-        // Ascolto real-time delle modifiche
+        // Flag per evitare sovrascritture cicliche indesiderate all'avvio
+        let isInitialLoad = true;
+
+        // Ascolto real-time delle modifiche da Firebase
         onValue(dbRef, (snapshot) => {
             const data = snapshot.val();
-            if (data) {
+            if (data && data.squadre && Object.keys(data.squadre).length > 0) {
                 window.appData = data;
-                if (!window.appData.squadre) window.appData.squadre = {};
-            } else {
+                if (!window.appData.squadraAttivaId || !window.appData.squadre[window.appData.squadraAttivaId]) {
+                    window.appData.squadraAttivaId = Object.keys(window.appData.squadre)[0];
+                }
+            } else if (isInitialLoad) {
+                // Inizializza solo se il DB è completamente vuoto
                 const defaultId = 'squadra_' + Date.now();
                 window.appData = {
                     squadraAttivaId: defaultId,
@@ -47,20 +53,21 @@
                 };
                 window.salvaSuCloud();
             }
+            isInitialLoad = false;
             aggiornaTuttiSelettoriSquadre();
             aggiornaUI();
         });
 
-        // Funzione globale per salvare su Firebase Cloud (utilizza Deep Clone per forzare il push su Firebase)
+        // Funzione globale per salvare su Firebase Cloud con Deep Clone
         window.salvaSuCloud = function() {
             if (!window.appData) return;
             const payload = JSON.parse(JSON.stringify(window.appData));
             set(ref(db, 'pallamano_app_data'), payload)
                 .then(() => {
-                    console.log("☁️ Data successfully synchronized to Firebase!");
+                    console.log("☁️ Dati sincronizzati correttamente su Firebase!");
                 })
                 .catch((error) => {
-                    console.error("❌ Firebase save error: ", error);
+                    console.error("❌ Errore di salvataggio su Firebase: ", error);
                 });
         };
     </script>
@@ -141,7 +148,7 @@
                 <div class="form-group">
                     <label>Opzionale: Carica File JSON Dati Squadra / Backup Globale (Protetti da password)</label>
                     <input type="file" id="nuova-squadra-json" accept=".json">
-                    <small style="color: #666;">Se selezioni un file JSON, ti verrà chiesta la password di sicurezza (1234).</small>
+                    <small style="color: #666;">Richiede la password di sicurezza (1234) per caricare e sovrascrivere i dati nel cloud.</small>
                 </div>
                 <button class="btn btn-success" onclick="creaSquadra()">➕ Crea / Carica Squadra</button>
             </div>
@@ -316,7 +323,7 @@
         };
 
         function verificaPassword() {
-            const pwd = prompt("Inserisci la password di sicurezza per procedere con il Backup / Ripristino:");
+            const pwd = prompt("Inserisci la password di sicurezza (1234) per procedere:");
             if (pwd !== PASSWORD_SICUREZZA) {
                 alert("⛔ Password errata! Operazione annullata.");
                 return false;
@@ -797,7 +804,7 @@
                         }
                     });
 
-                    // Forziamo il salvataggio su Firebase
+                    // Forziamo il salvataggio immediato in cloud su Firebase
                     window.salvaSuCloud();
                     aggiornaTuttiSelettoriSquadre();
                     aggiornaUI();
