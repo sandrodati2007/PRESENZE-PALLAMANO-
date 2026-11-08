@@ -45,7 +45,7 @@
                         [defaultId]: { nome: 'Squadra Predefinita', giocatori: [], eventi: [] }
                     }
                 };
-                salvaSuCloud();
+                window.salvaSuCloud();
             }
             aggiornaTuttiSelettoriSquadre();
             aggiornaUI();
@@ -53,7 +53,13 @@
 
         // Funzione globale per salvare su Firebase Cloud
         window.salvaSuCloud = function() {
-            set(ref(db, 'pallamano_app_data'), window.appData);
+            set(ref(db, 'pallamano_app_data'), window.appData)
+                .then(() => {
+                    console.log("Dati salvati correttamente su Firebase.");
+                })
+                .catch((error) => {
+                    console.error("Errore durante il salvataggio su Firebase: ", error);
+                });
         };
     </script>
 
@@ -158,7 +164,7 @@
             </table>
         </div>
 
-        <!-- SEZIONE 2: EVENTI & APPELLO (CON PAGINE SEPARATE CREAZIONE / VISIONE) -->
+        <!-- SEZIONE 2: EVENTI & APPELLO -->
         <div id="tab-evento" class="tab-content">
             <h3>Gestione Eventi e Convocazioni</h3>
             
@@ -167,13 +173,11 @@
                 <select class="select-squadra-global" id="appello-squadra-select" onchange="cambiaSquadraGlobal(this.value)"></select>
             </div>
 
-            <!-- SOTTO-NAVIGAZIONE TRA PAGINA CREAZIONE E PAGINA VISIONE -->
             <div class="sub-nav">
                 <button id="btn-sub-crea" class="active" onclick="passaPaginaEvento('creazione')">➕ 1. Crea Nuovo Evento / Convocazione</button>
                 <button id="btn-sub-visione" onclick="passaPaginaEvento('visione')">📂 2. Visiona / Modifica Eventi Esistenti</button>
             </div>
 
-            <!-- PAGINA A: CREAZIONE NUOVO EVENTO -->
             <div id="sotto-tab-creazione" class="sub-tab-content">
                 <div class="card" style="background: #ffffff; border: 2px solid var(--success); margin-bottom: 20px;">
                     <h4 style="margin-top:0; color:var(--primary);">Compila i dati per il nuovo evento</h4>
@@ -207,14 +211,12 @@
                         </div>
                     </div>
 
-                    <!-- UNICO TASTO VERDE -->
                     <button class="btn-large-success" onclick="avviaNuovoEvento()">
                         🚀 APRI TABELLA GIOCATORI (TUTTI ATTIVI) E CREA
                     </button>
                 </div>
             </div>
 
-            <!-- PAGINA B: VISIONE / MODIFICA EVENTI ESISTENTI -->
             <div id="sotto-tab-visione" class="sub-tab-content" style="display:none;">
                 <div class="highlight">
                     <label>Seleziona un evento salvato per visionarlo o modificarlo:</label>
@@ -224,10 +226,8 @@
                 </div>
             </div>
 
-            <!-- CAMPO ID CORRENTE (Nascosto) -->
             <input type="hidden" id="e-id-corrente" value="">
 
-            <!-- AREA COMUNE DELLA TABELLA APPELLO / CONVOCAZIONI -->
             <div id="area-appello" style="display:none; margin-top: 20px; background: #fafafa; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
                 <hr>
                 <h4 id="titolo-appello">Registro Presenze / Convocazioni</h4>
@@ -322,7 +322,8 @@
         }
 
         window.onload = () => {
-            document.getElementById('e-data').valueAsDate = new Date();
+            const dateEl = document.getElementById('e-data');
+            if(dateEl) dateEl.valueAsDate = new Date();
             toggleCampiEvento();
         };
 
@@ -357,7 +358,6 @@
             aggiornaUI();
         }
 
-        // GESTIONE CAMBIO PAGINA INTERNA (Creazione vs Visione)
         function passaPaginaEvento(pagina) {
             const btnCrea = document.getElementById('btn-sub-crea');
             const btnVisione = document.getElementById('btn-sub-visione');
@@ -370,7 +370,6 @@
                 divCrea.style.display = 'block';
                 divVisione.style.display = 'none';
                 
-                // Pulisce l'ID per garantire che sia un evento totalmente nuovo
                 document.getElementById('e-id-corrente').value = '';
                 document.getElementById('area-appello').style.display = 'none';
             } else {
@@ -394,9 +393,7 @@
                         let importedData = JSON.parse(e.target.result);
                         
                         if (importedData.squadre) {
-                            Object.keys(importedData.squadre).forEach(id => {
-                                window.appData.squadre[id] = importedData.squadre[id];
-                            });
+                            window.appData.squadre = importedData.squadre;
                             if (importedData.squadraAttivaId && window.appData.squadre[importedData.squadraAttivaId]) {
                                 window.appData.squadraAttivaId = importedData.squadraAttivaId;
                             } else {
@@ -419,7 +416,7 @@
                                 eventi: eventi
                             };
                             window.appData.squadraAttivaId = idNuovaSquadra;
-                            alert(`Squadra "${nomeSquadra}" creata con successo!`);
+                            alert(`Squadra "${nomeSquadra}" creata e caricata con successo!`);
                         }
 
                         document.getElementById('nuova-squadra-nome').value = '';
@@ -505,7 +502,6 @@
             }
         }
 
-        // TASTO VERDE: Genera un ID del tutto nuovo e apre la tabella con TUTTI ATTIVI
         function avviaNuovoEvento() {
             const db = getSquadra();
             if(db.giocatori.length === 0) return alert(`Aggiungi prima dei giocatori per la squadra "${db.nome}"!`);
@@ -517,15 +513,13 @@
             const nomePartita = document.getElementById('e-nome-partita').value.trim();
             if((tipo === 'Partita' || tipo === 'Convocazione') && !nomePartita) return alert("Inserisci il dettaglio o l'avversario dell'evento!");
 
-            // Assegna ID univoco garantendo che non sovrascriva nulla
             const nuovoId = 'ev_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
             document.getElementById('e-id-corrente').value = nuovoId;
             document.getElementById('btn-elimina-evento').style.display = 'none';
 
-            mostraTabellaGiocatori(true); // true = tutti spuntati attivi
+            mostraTabellaGiocatori(true);
         }
 
-        // CARICA EVENTO ESISTENTE DALLA PAGINA VISIONE
         function caricaEventoPerVisione() {
             const db = getSquadra();
             const idEvento = document.getElementById('selettore-evento-visione').value;
@@ -546,7 +540,7 @@
                 document.getElementById('e-note').value = evento.note || '';
                 document.getElementById('btn-elimina-evento').style.display = 'inline-block';
                 toggleCampiEvento();
-                mostraTabellaGiocatori(false); // false = carica i dati salvati dell'evento
+                mostraTabellaGiocatori(false);
             }
         }
 
@@ -638,7 +632,6 @@
                 db.eventi.push(nuovoEvento); 
             }
 
-            // Ordinamento cronologico inverso
             db.eventi.sort((a, b) => {
                 const dtA = new Date(a.data + (a.ora ? 'T' + a.ora : 'T00:00'));
                 const dtB = new Date(b.data + (b.ora ? 'T' + b.ora : 'T00:00'));
@@ -647,7 +640,7 @@
 
             window.salvaSuCloud();
             aggiornaUI();
-            alert(`✅ Evento (${tipo}) salvato con successo come entità distinta!`);
+            alert(`✅ Evento (${tipo}) salvato con successo in cloud!`);
         }
 
         function eliminaEventoCorrente() {
@@ -665,7 +658,6 @@
         function aggiornaUI() {
             const db = getSquadra();
             
-            // 1. Rosa Giocatori
             document.getElementById('titolo-rosa').innerText = `Gestione Rosa (${db.nome || 'Squadra'})`;
             const tbodyG = document.getElementById('lista-giocatori');
             tbodyG.innerHTML = '';
@@ -674,7 +666,6 @@
                 tbodyG.innerHTML += `<tr><td><strong>${g.cognome}</strong> ${g.nome}</td><td>${g.ruolo}</td><td><button class="btn btn-danger" onclick="eliminaGiocatore('${g.id}')">X</button></td></tr>`;
             });
 
-            // 2. Eventi distinti nella pagina Visione
             const selectVisione = document.getElementById('selettore-evento-visione');
             const idCorrente = document.getElementById('e-id-corrente').value;
             selectVisione.innerHTML = '<option value="">-- Seleziona un evento dall\'elenco --</option>';
@@ -691,7 +682,6 @@
                 selectVisione.value = idCorrente;
             }
 
-            // 3. Popola Opzioni Sezione PDF
             const pdfSquadraId = document.getElementById('pdf-squadra-select').value || window.appData.squadraAttivaId;
             aggiornaOpzioniPdfSquadra(pdfSquadraId);
         }
@@ -755,13 +745,15 @@
         }
 
         function importaDati() {
-            const file = document.getElementById('file-import').files[0];
+            const fileInput = document.getElementById('file-import');
+            const file = fileInput.files[0];
             if(!file) return alert("Seleziona un file JSON di backup.");
 
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
                     const imported = JSON.parse(e.target.result);
+                    
                     if (imported.squadre) {
                         window.appData.squadre = imported.squadre;
                         if (imported.squadraAttivaId && window.appData.squadre[imported.squadraAttivaId]) {
@@ -786,11 +778,15 @@
                         }
                     });
 
+                    // Sincronizzazione immediata sul Cloud Firebase
                     window.salvaSuCloud();
                     aggiornaTuttiSelettoriSquadre();
                     aggiornaUI();
-                    alert("Dati ripristinati con successo in cloud!");
+                    
+                    fileInput.value = '';
+                    alert("Dati ripristinati e sincronizzati in cloud con successo!");
                 } catch(err) {
+                    console.error(err);
                     alert("Errore nella lettura del file JSON!");
                 }
             };
