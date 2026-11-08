@@ -51,14 +51,16 @@
             aggiornaUI();
         });
 
-        // Funzione globale per salvare su Firebase Cloud
+        // Funzione globale per salvare su Firebase Cloud (utilizza Deep Clone per forzare il push su Firebase)
         window.salvaSuCloud = function() {
-            set(ref(db, 'pallamano_app_data'), window.appData)
+            if (!window.appData) return;
+            const payload = JSON.parse(JSON.stringify(window.appData));
+            set(ref(db, 'pallamano_app_data'), payload)
                 .then(() => {
-                    console.log("Dati salvati correttamente su Firebase.");
+                    console.log("☁️ Data successfully synchronized to Firebase!");
                 })
                 .catch((error) => {
-                    console.error("Errore durante il salvataggio su Firebase: ", error);
+                    console.error("❌ Firebase save error: ", error);
                 });
         };
     </script>
@@ -137,9 +139,9 @@
                     <input type="text" id="nuova-squadra-nome" placeholder="Es. Under 17 Maschile, Serie B...">
                 </div>
                 <div class="form-group">
-                    <label>Opzionale: Carica File JSON Dati Squadra / Backup Globale</label>
+                    <label>Opzionale: Carica File JSON Dati Squadra / Backup Globale (Protetti da password)</label>
                     <input type="file" id="nuova-squadra-json" accept=".json">
-                    <small style="color: #666;">Se selezioni un file JSON di backup, potrai importare o ripristinare le squadre.</small>
+                    <small style="color: #666;">Se selezioni un file JSON, ti verrà chiesta la password di sicurezza (1234).</small>
                 </div>
                 <button class="btn btn-success" onclick="creaSquadra()">➕ Crea / Carica Squadra</button>
             </div>
@@ -257,14 +259,14 @@
             <div class="tools-grid">
                 
                 <div class="card">
-                    <h4>Backup e Ripristino</h4>
-                    <p style="font-size: 13px; color: #666; margin-top: 0;">Il backup includerà automaticamente **tutte le squadre** presenti nel sistema.</p>
-                    <button class="btn btn-success" onclick="esportaDatiSceltaCartella()" style="width: 100%; margin-bottom: 15px;">⬇️ Salva Backup Globale (Tutte le Squadre)...</button>
+                    <h4>Backup e Ripristino (Protetto da Password)</h4>
+                    <p style="font-size: 13px; color: #666; margin-top: 0;">Il salvataggio e il ripristino richiedono il codice di sicurezza (1234).</p>
+                    <button class="btn btn-success" onclick="esportaDatiSceltaCartella()" style="width: 100%; margin-bottom: 15px;">🔒 ⬇️ Salva Backup Globale...</button>
                     <hr style="margin: 15px 0;">
                     <div class="form-group">
-                        <label>Importa / Ripristina Backup Globale o di Squadra:</label>
+                        <label>Importa / Ripristina Backup Globale o Squadra:</label>
                         <input type="file" id="file-import" accept=".json" style="margin-bottom: 10px;">
-                        <button class="btn" onclick="importaDati()" style="width: 100%;">⬆️ Carica Dati da JSON</button>
+                        <button class="btn" onclick="importaDati()" style="width: 100%;">🔒 ⬆️ Carica Dati da JSON</button>
                     </div>
                 </div>
 
@@ -306,10 +308,21 @@
     </div>
 
     <script>
+        const PASSWORD_SICUREZZA = "1234";
+
         window.appData = {
             squadraAttivaId: '',
             squadre: {}
         };
+
+        function verificaPassword() {
+            const pwd = prompt("Inserisci la password di sicurezza per procedere con il Backup / Ripristino:");
+            if (pwd !== PASSWORD_SICUREZZA) {
+                alert("⛔ Password errata! Operazione annullata.");
+                return false;
+            }
+            return true;
+        }
 
         function getSquadra(id) {
             const sqId = id || window.appData.squadraAttivaId;
@@ -387,6 +400,8 @@
             const file = fileInput.files[0];
 
             if (file) {
+                if (!verificaPassword()) return;
+
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
@@ -399,7 +414,7 @@
                             } else {
                                 window.appData.squadraAttivaId = Object.keys(window.appData.squadre)[0];
                             }
-                            alert("Backup globale importato con successo!");
+                            alert("Backup globale importato con successo su Firebase!");
                         } else {
                             if (!nomeSquadra) return alert("Inserisci un nome per la nuova squadra!");
                             const idNuovaSquadra = 'sq_' + Date.now();
@@ -416,7 +431,7 @@
                                 eventi: eventi
                             };
                             window.appData.squadraAttivaId = idNuovaSquadra;
-                            alert(`Squadra "${nomeSquadra}" creata e caricata con successo!`);
+                            alert(`Squadra "${nomeSquadra}" creata e sincronizzata con successo!`);
                         }
 
                         document.getElementById('nuova-squadra-nome').value = '';
@@ -640,7 +655,7 @@
 
             window.salvaSuCloud();
             aggiornaUI();
-            alert(`✅ Evento (${tipo}) salvato con successo in cloud!`);
+            alert(`✅ Evento (${tipo}) salvato con successo in cloud su Firebase!`);
         }
 
         function eliminaEventoCorrente() {
@@ -707,6 +722,8 @@
         }
 
         async function esportaDatiSceltaCartella() {
+            if (!verificaPassword()) return;
+
             const backupGlobale = {
                 squadraAttivaId: window.appData.squadraAttivaId,
                 squadre: window.appData.squadre
@@ -749,6 +766,8 @@
             const file = fileInput.files[0];
             if(!file) return alert("Seleziona un file JSON di backup.");
 
+            if (!verificaPassword()) return;
+
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
@@ -778,13 +797,13 @@
                         }
                     });
 
-                    // Sincronizzazione immediata sul Cloud Firebase
+                    // Forziamo il salvataggio su Firebase
                     window.salvaSuCloud();
                     aggiornaTuttiSelettoriSquadre();
                     aggiornaUI();
                     
                     fileInput.value = '';
-                    alert("Dati ripristinati e sincronizzati in cloud con successo!");
+                    alert("Dati ripristinati e sincronizzati in cloud su Firebase con successo!");
                 } catch(err) {
                     console.error(err);
                     alert("Errore nella lettura del file JSON!");
